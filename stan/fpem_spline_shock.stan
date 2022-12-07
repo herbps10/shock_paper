@@ -96,7 +96,8 @@ transformed data {
   vector[rows(csr_extract_w(a_model_matrix))] a_model_matrix_w             = csr_extract_w(a_model_matrix);
   array[size(csr_extract_v(a_model_matrix))] int a_model_matrix_v          = csr_extract_v(a_model_matrix);
   array[size(csr_extract_u(a_model_matrix))] int a_model_matrix_u          = csr_extract_u(a_model_matrix);
-
+  
+  array[C] int t_lasts = rep_array(0, C);
 
   int num_basis = num_knots + spline_degree - 1;
   vector[2 * spline_degree + num_knots] ext_knots;
@@ -108,6 +109,10 @@ transformed data {
   ext_knots[1:spline_degree] = rep_vector(knots[1], spline_degree);
   ext_knots[(num_knots + spline_degree + 1):(num_knots + 2 * spline_degree)] = rep_vector(knots[num_knots], spline_degree);
   ext_knots[(spline_degree + 1):(num_knots + spline_degree)] = knots;
+  
+  for(i in 1:N) {
+    if(time[i] > t_lasts[country[i]]) t_lasts[country[i]] = time[i];
+  }
 }
 
 parameters {
@@ -212,14 +217,14 @@ transformed parameters {
       for(t in (t_star[c] + 1):T) {
         transition_function = rate_spline(inv_logit(logit_eta[t - 1]), P_tilde[c], a[c,], ext_knots, num_basis, spline_degree);
         logit_eta[t] = logit_eta[t - 1] + transition_function + epsilon[c, t];
-        if(t <= t_last) logit_eta[t] += shock[c, t];
+        if(t <= t_lasts[c]) logit_eta[t] += shock[c, t];
       }
 
       for(q in 1:(t_star[c] - 1)) {
         int t = t_star[c] - q;
         transition_function = rate_spline(inv_logit(logit_eta[t + 1]), P_tilde[c], a[c,], ext_knots, num_basis, spline_degree);
         logit_eta[t] = logit_eta[t + 1] - transition_function - epsilon[c, t + 1];
-        if(t <= t_last) logit_eta[t] -= shock[c, t];
+        if(t <= t_lasts[c]) logit_eta[t] -= shock[c, t];
       }
     }
     // No smoothing
@@ -227,14 +232,14 @@ transformed parameters {
       for(t in (t_star[c] + 1):T) {
         transition_function = rate_spline(inv_logit(logit_eta[t - 1]), P_tilde[c], a[c,], ext_knots, num_basis, spline_degree);
         logit_eta[t] = logit_eta[t - 1] + transition_function;
-        if(t <= t_last) logit_eta[t] += shock[c,t];
+        if(t <= t_lasts[c]) logit_eta[t] += shock[c,t];
       }
 
       for(q in 1:(t_star[c] - 1)) {
         int t = t_star[c] - q;
         transition_function = rate_spline(inv_logit(logit_eta[t + 1]), P_tilde[c], a[c,], ext_knots, num_basis, spline_degree);
         logit_eta[t] = logit_eta[t + 1] - transition_function;
-        if(t <= t_last) logit_eta[t] -= shock[c,t];
+        if(t <= t_lasts[c]) logit_eta[t] -= shock[c,t];
       }
     }
 

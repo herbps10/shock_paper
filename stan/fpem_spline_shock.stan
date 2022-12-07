@@ -98,6 +98,8 @@ transformed data {
   array[size(csr_extract_u(a_model_matrix))] int a_model_matrix_u          = csr_extract_u(a_model_matrix);
   
   array[C] int t_lasts = rep_array(0, C);
+  array[C] int t_firsts = rep_array(T, C);
+  int n_shocks = 0;
 
   int num_basis = num_knots + spline_degree - 1;
   vector[2 * spline_degree + num_knots] ext_knots;
@@ -111,7 +113,12 @@ transformed data {
   ext_knots[(spline_degree + 1):(num_knots + spline_degree)] = knots;
   
   for(i in 1:N) {
+    if(time[i] < t_firsts[country[i]]) t_firsts[country[i]] = time[i];
     if(time[i] > t_lasts[country[i]]) t_lasts[country[i]] = time[i];
+  }
+  
+  for(c in 1:C) {
+    n_shocks += t_lasts[c] - t_firsts[c];
   }
 }
 
@@ -136,9 +143,9 @@ parameters {
   // Data model
   array[S] real<lower=0> nonse;
   
-  vector<upper=0>[C * t_last] shock_raw;
+  vector<upper=0>[n_shocks] shock_raw;
   real<lower=0> global_shrinkage;
-  vector<lower=0>[C * t_last] local_shrinkage; // called lambda in paper
+  vector<lower=0>[n_shocks] local_shrinkage; // called lambda in paper
   real<lower=0> caux;
 }
 
@@ -163,13 +170,23 @@ transformed parameters {
 
   vector<lower=0>[N] scale;
   
-  vector<lower=0>[C * t_last] truncated_local_shrinkage; // called lambda_tilde in paper
+  vector<lower=0>[n_shocks] truncated_local_shrinkage; // called lambda_tilde in paper
   real<lower=0> c_slab;
-  matrix[C, t_last] shock;
+  matrix[C, T] shock = rep_matrix(0, C, T);
   
   c_slab = slab_scale * sqrt(caux);
   truncated_local_shrinkage = sqrt(c_slab^2 * square(local_shrinkage) ./ (c_slab^2 + global_shrinkage^2 * square(local_shrinkage)));
-  shock = to_matrix(shock_raw .* truncated_local_shrinkage * global_shrinkage, C, t_last);
+  
+  {
+    vector[n_shocks] shock_vector = shock_raw .* truncated_local_shrinkage * global_shrinkage;
+    int index = 1;
+    for(c in 1:C) {
+      for(t in (t_firsts[c] + 1):t_lasts[c]) {
+        shock[c, t] = shock_vector[index];
+        index = index + 1;
+      }
+    }
+  }
 
   a_sigma[1, ] = rep_row_vector(1, num_basis - num_constrained_zero);
   if(a_n_re > 1) a_sigma[2:a_n_re, ] = a_sigma_raw;
@@ -216,30 +233,26 @@ transformed parameters {
     if(smoothing == 1) {
       for(t in (t_star[c] + 1):T) {
         transition_function = rate_spline(inv_logit(logit_eta[t - 1]), P_tilde[c], a[c,], ext_knots, num_basis, spline_degree);
-        logit_eta[t] = logit_eta[t - 1] + transition_function + epsilon[c, t];
-        if(t <= t_lasts[c]) logit_eta[t] += shock[c, t];
+        logit_eta[t] = logit_eta[t - 1] + transition_function + epsilon[c, t] + shock[c, t];
       }
 
       for(q in 1:(t_star[c] - 1)) {
         int t = t_star[c] - q;
         transition_function = rate_spline(inv_logit(logit_eta[t + 1]), P_tilde[c], a[c,], ext_knots, num_basis, spline_degree);
-        logit_eta[t] = logit_eta[t + 1] - transition_function - epsilon[c, t + 1];
-        if(t <= t_lasts[c]) logit_eta[t] -= shock[c, t];
+        logit_eta[t] = logit_eta[t + 1] - transition_function - epsilon[c, t + 1] - shock[c, t + 1];
       }
     }
     // No smoothing
     else if(smoothing == 0) {
       for(t in (t_star[c] + 1):T) {
         transition_function = rate_spline(inv_logit(logit_eta[t - 1]), P_tilde[c], a[c,], ext_knots, num_basis, spline_degree);
-        logit_eta[t] = logit_eta[t - 1] + transition_function;
-        if(t <= t_lasts[c]) logit_eta[t] += shock[c,t];
+        logit_eta[t] = logit_eta[t - 1] + transition_function + shock[c, t];
       }
 
       for(q in 1:(t_star[c] - 1)) {
         int t = t_star[c] - q;
         transition_function = rate_spline(inv_logit(logit_eta[t + 1]), P_tilde[c], a[c,], ext_knots, num_basis, spline_degree);
-        logit_eta[t] = logit_eta[t + 1] - transition_function;
-        if(t <= t_lasts[c]) logit_eta[t] -= shock[c,t];
+        logit_eta[t] = logit_eta[t + 1] - transition_function + shock[c, t + 1];
       }
     }
 

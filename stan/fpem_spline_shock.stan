@@ -83,6 +83,7 @@ data {
   real<lower=0> scale_global;
   real<lower=0> slab_scale;
   real<lower=0> slab_df;
+	real<lower=0> ssq;
 }
 transformed data {
   vector[rows(csr_extract_w(P_tilde_model_matrix))] P_tilde_model_matrix_w    = csr_extract_w(P_tilde_model_matrix);
@@ -287,7 +288,7 @@ model {
   shock_raw ~ std_normal();
   local_shrinkage ~ student_t(nu_local, 0, 1);
   global_shrinkage ~ student_t(nu_global, 0, scale_global);
-  caux ~ inv_gamma(0.5 * slab_df, 0.5 * slab_df);
+  caux ~ inv_gamma(0.5 * slab_df, 0.5 * slab_df * ssq);
 
   for(i in 1:N) {
     if(held_out[i] == 0) {

@@ -1,4 +1,4 @@
-library(fpemplus)
+library(BayesTransitionModels)
 library(tidyverse)
 
 data <- national_data(
@@ -57,19 +57,14 @@ my_fit <- function(scale_global = 0.01, slab_scale = 1, slab_df = 1, model = her
 
 basic_fit <- my_fit(model = "spline")
 fit <- my_fit(0.01, model = here::here("./stan/fpem_spline_shock.stan"))
-fit2 <- my_fit(1e-4, slab_df = 1, model = here::here("./stan/fpem_spline_shock.stan"))
-fit3 <- my_fit(1e-5, slab_df = 1, model = here::here("./stan/fpem_spline_shock.stan"))
-
-fit_obs_nonse <- my_fit(0.01, slab_scale = 1, model = here::here("./stan/fpem_spline_shock_obs_nonse.stan"))
+fit2 <- my_fit(1e-4, model = here::here("./stan/fpem_spline_shock.stan"))
 
 plot_indicator(basic_fit)
 plot_indicator(fit)
 plot_indicator(fit2)
-plot_indicator(fit3)
 
 shock <- tidybayes::spread_draws(fit$samples, shock[c, t])
 shock2 <- tidybayes::spread_draws(fit2$samples, shock[c, t])
-shock3 <- tidybayes::spread_draws(fit3$samples, shock[c, t])
 
 -shock$shock %>% log %>% hist()
 -shock2$shock %>% log %>% hist()
@@ -77,7 +72,6 @@ shock3 <- tidybayes::spread_draws(fit3$samples, shock[c, t])
 
 mean(-shock$shock > 0.05)
 mean(-shock2$shock > 0.05)
-mean(-shock3$shock > 0.05)
 
 hist(shock$shock[shock$shock < 0.001 & shock$shock > -0.1])
 

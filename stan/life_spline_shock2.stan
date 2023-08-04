@@ -5,6 +5,22 @@ functions {
   real rate_spline(real P, real P_tilde, real P_tilde2, row_vector a, vector ext_knots, int num_basis, int spline_degree) {
     return deboor((P - P_tilde) / P_tilde2, ext_knots, a, spline_degree);
   }
+  
+  real normal_lub_rng(real mu, real sigma, real lb, real ub) {
+    real p_lb = normal_cdf(lb | mu, sigma);
+    real p_ub = normal_cdf(ub | mu, sigma);
+    real u = uniform_rng(p_lb, p_ub);
+    real y = mu + sigma * inv_Phi(u);
+    return y;
+  }
+  
+  real shock_rng(real nu_local, real c_slab, real global_shrinkage) {
+    real shock_raw_pred = normal_lub_rng(0, 1, negative_infinity(), 0);
+    //real shock_raw_pred = normal_rng(0, 1);
+    real local_shrinkage_pred = student_t_rng(nu_local, 0, 1);
+    real truncated_local_shrinkage_pred = sqrt(c_slab^2 * square(local_shrinkage_pred) ./ (c_slab^2 + global_shrinkage^2 * square(local_shrinkage_pred)));
+    return shock_raw_pred * truncated_local_shrinkage_pred * global_shrinkage;
+  }
 }
 
 data {
@@ -27,13 +43,6 @@ data {
   vector[num_grid] grid;
   matrix[num_knots + spline_degree - 1, num_grid] B;
 
-  // hierarchical a
-  int<lower=0> a_n_terms;
-  int<lower=0> a_n_re;
-  int<lower=1, upper=a_n_terms> a_re_start[a_n_re];
-  int<lower=1, upper=a_n_terms> a_re_end[a_n_re];
-  matrix[C, a_n_terms] a_model_matrix;
-  
   real a_lower_bound;
   real a_upper_bound;
   
@@ -42,10 +51,6 @@ data {
   real<lower=0> slab_df;
 }
 transformed data {
-  vector[rows(csr_extract_w(a_model_matrix))] a_model_matrix_w             = csr_extract_w(a_model_matrix);
-  int a_model_matrix_v[size(csr_extract_v(a_model_matrix))]                = csr_extract_v(a_model_matrix);
-  int a_model_matrix_u[size(csr_extract_u(a_model_matrix))]                = csr_extract_u(a_model_matrix);
-
   int num_basis = num_knots + spline_degree - 1;
   vector[2 * spline_degree + num_knots] ext_knots;
   int num_constrained_zero = spline_degree + 1;
@@ -71,22 +76,29 @@ transformed data {
   }
   
   for(c in 1:C) {
-    n_shocks += final_observed[c] - 2;
+    //n_shocks += final_observed[c] - 2;
+    n_shocks += final_observed[c] - 1;
   }
+  
+  real P_tilde = 15;
+  real P_tilde2 = 85;
 }
 
 parameters {
   // Spline rate vs. level function
-  matrix[a_n_terms, num_basis - num_constrained_zero] a_raw;
-  matrix<lower=0>[a_n_re, num_basis - num_constrained_zero] a_sigma;
+  vector[num_basis - 2] a_mu;
+  matrix[C, num_basis - 2] a_raw;
+  vector<lower=0>[num_basis - 2] a_sigma;
   
   //vector[C] Omega_raw;
-  real P_tilde2_mu;
-  vector[C] P_tilde2_raw;
+  //real P_tilde2_mu;
+  //real<lower=0> P_tilde2_sigma;
+  //vector[C] P_tilde2_raw;
 
   real<lower=0> epsilon_scale;
   
   vector<upper=0>[n_shocks] shock_raw;
+  //vector[n_shocks] shock_raw;
   real<lower=0> global_shrinkage;
   vector<lower=0>[n_shocks] local_shrinkage; // called lambda in paper
   real<lower=0> caux;
@@ -96,64 +108,54 @@ transformed parameters {
   matrix[C, t_last] transition_function = rep_matrix(0, C, t_last);
   matrix[C, t_last] gamma = rep_matrix(0, C, t_last);
   matrix[C, num_basis] a;
-  //real<lower=0> epsilon_scale = 0.3;
   
-  //vector[C] Omega = 15 + inv_logit(Omega_raw) * 75;
-  vector[C] P_tilde = rep_vector(15, C);
-  vector[C] P_tilde2 = inv_logit(P_tilde2_mu + P_tilde2_raw) * 100;
+  matrix[C, t_last] shock = rep_matrix(0, C, t_last);
+  
+  //vector[C] P_tilde = rep_vector(15, C); // Lower asymptote
+  //vector[C] P_tilde2 = 50 + inv_logit(P_tilde2_mu + P_tilde2_raw * P_tilde2_sigma) * 50; // Upper asymptote
 
-  matrix[a_n_terms, num_basis - num_constrained_zero] a_star;
-  
+  real<lower=0> c_slab = slab_scale * sqrt(caux);
   vector<lower=0>[n_shocks] truncated_local_shrinkage; // called lambda_tilde in paper
-  real<lower=0> c_slab;
-  matrix[C, t_last - 2] shock = rep_matrix(0, C, t_last - 2);
-  
-  c_slab = slab_scale * sqrt(caux);
-  truncated_local_shrinkage = sqrt(c_slab^2 * square(local_shrinkage) ./ (c_slab^2 + global_shrinkage^2 * square(local_shrinkage)));
-  //shock = to_matrix(shock_raw .* truncated_local_shrinkage * global_shrinkage, C, t_last - 2);
   
   {
     vector[n_shocks] shock_shrinkage;
-    int index = 1;
+    truncated_local_shrinkage = sqrt(c_slab^2 * square(local_shrinkage) ./ (c_slab^2 + global_shrinkage^2 * square(local_shrinkage)));
     shock_shrinkage = shock_raw .* truncated_local_shrinkage * global_shrinkage;
     
+    int index = 1;
     for(c in 1:C) {
-      shock[c, 1:(final_observed[c] - 2)] = to_row_vector(shock_shrinkage[index:(index + final_observed[c] - 3)]);
-      index += (final_observed[c] - 2);
+      int final_index = index + final_observed[c] - 2;
+      shock[c, 1:(final_observed[c] - 1)] = to_row_vector(shock_shrinkage[index:final_index]);
+      index += (final_observed[c] - 1);
     }
   }
 
   // Initialize the non-zero spline coefficients
-  for(i in 1:(num_basis - num_constrained_zero)) {
-    a_star[, i] = scale_blocks(a_raw[, i], a_sigma[, i], a_re_start, a_re_end);
-    a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(csr_matrix_times_vector(C, a_n_terms, a_model_matrix_w, a_model_matrix_v, a_model_matrix_u, a_star[, i]));
+  for(i in 1:(num_basis - 3)) {
+    a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[i] + a_raw[,i] * a_sigma[i]);
+    //a[, i] = a_lower_bound + exp(a_mu[i] + a_raw[,i] * a_sigma[i]);
   }
+  a[, num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2] + a_raw[,num_basis - 2] * a_sigma[num_basis - 2]);
 
   for(c in 1:C) {
-    a[c, (num_basis - num_constrained_zero + 1):num_basis] = rep_row_vector(0, num_constrained_zero);
+    a[c, (num_basis - 1):num_basis] = rep_row_vector(a[c, num_basis - 2], 2);
     for(t in 2:final_observed[c]) {
-      transition_function[c, t] = rate_spline(ymat[c, t - 1], P_tilde[c], P_tilde2[c], a[c,], ext_knots, num_basis, spline_degree);
-      if(t == 2) {
-        gamma[c, t] = transition_function[c, t] + shock[c, t - 1];
-      }
-      else if(t == final_observed[c]) {
-        gamma[c, t] = transition_function[c, t] - shock[c, t - 2];
-      }
-      else {
-        gamma[c, t] = transition_function[c, t] + shock[c, t - 1] - shock[c, t - 2];
-      }
+      transition_function[c, t] = rate_spline(ymat[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
+      gamma[c, t] = transition_function[c, t] + shock[c, t] - shock[c, t - 1];
     }
   }
 }
 
 model {
+  a_mu ~ normal(0, 3);
   to_vector(a_raw) ~ std_normal();
-  to_vector(a_sigma) ~ std_normal();
+  a_sigma ~ std_normal();
 
-  epsilon_scale ~ normal(0, 1);
+  epsilon_scale ~ inv_gamma(0.1, 0.1);
   
-  P_tilde2_mu ~ std_normal();
-  P_tilde2_raw ~ std_normal();
+  //P_tilde2_mu ~ std_normal();
+  //P_tilde2_sigma ~ std_normal();
+  //P_tilde2_raw ~ std_normal();
   
   shock_raw ~ std_normal();
   local_shrinkage ~ student_t(nu_local, 0, 1);
@@ -168,14 +170,46 @@ model {
 }
 generated quantities {
   matrix[C, T] eta;
+  matrix[C, T] eta_crisisfree;
+  matrix[C, T] shock2;
+  
+  matrix[C, num_grid] transition_function_pred;
+  vector[num_grid] transition_function_mean;
+  
+ {
+    vector[num_basis] a_mean;
+    a_mean[1:(num_basis - 3)] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[1:(num_basis - 3)]);
+    a_mean[num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2]);
+    a_mean[(num_basis - 1):num_basis] = rep_vector(a_mean[num_basis - 2], 2);
+    for(i in 1:num_grid) {
+      transition_function_mean[i] = rate_spline(grid[i], 0, 1, to_row_vector(a_mean), ext_knots, num_basis, spline_degree);
+    }
+  } 
   
   for(c in 1:C) {
-    eta[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
+    eta_crisisfree[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
     
     for(t in (final_observed[c] + 1):T) {
       real error = normal_rng(0, epsilon_scale);
-      real transition = rate_spline(eta[c, t - 1], P_tilde[c], P_tilde2[c], a[c,], ext_knots, num_basis, spline_degree);
-      eta[c, t] = eta[c, t - 1] + transition + error;
+      real transition_crisisfree = rate_spline(eta_crisisfree[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
+      eta_crisisfree[c, t] = eta_crisisfree[c, t - 1] + transition_crisisfree + error;
+    }
+    
+    eta[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
+    shock2[c, 1:(final_observed[c])] = shock[c, 1:(final_observed[c])];
+    
+    for(t in (final_observed[c] + 1):T) {
+      real error = normal_rng(0, epsilon_scale);
+      
+      shock2[c, t] = shock_rng(nu_local, c_slab, global_shrinkage);
+      
+      real transition = rate_spline(eta[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
+      
+      eta[c, t] = eta[c, t - 1] + transition + error + shock2[c, t] - shock2[c, t - 1];
+    }
+    
+    for(i in 1:num_grid) {
+      transition_function_pred[c, i] = rate_spline(grid[i], 0, 1, a[c,], ext_knots, num_basis, spline_degree);
     }
   }
 }

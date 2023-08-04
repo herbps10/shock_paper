@@ -31,20 +31,19 @@ datM %>%
   distinct(name) %>%
   nrow()
 
-# Histogram of year-over-year changes in e0
+# Histogram of changes in e0
 e0_differences <- datM %>%
   group_by(name) %>%
   mutate(diff = c(NA, diff(e0)))
 
 e0_differences %>%
   ggplot(aes(x = diff)) +
-  geom_histogram(color = "white", binwidth = 1)
+  geom_histogram(color = "white", binwidth = 1) +
+  geom_boxplot(aes(y = -20), width = 30, alpha = 0.5) +
+  labs(x = expression(paste("Difference in ", e[0], ": ", eta[ct] - eta[ct-1])), y = "Count")
 
-quantile(e0_differences$diff, na.rm = TRUE, c(0, 0.025, 0.05, 0.5, 0.95, 0.975))
-mean(e0_differences$diff < -2, na.rm = TRUE)
+countries <- c("Republic of Korea", "Bosnia and Herzegovina", "Cambodia", "Lebanon", "Timor-Leste", "Syrian Arab Republic")
 
-countries <- c("Bangladesh", "Bosnia and Herzegovina", "Cambodia", "El Salvador", "Lebanon", "Timor-Leste")
-  
 datM %>%   
   filter(name %in% countries) %>%
   ggplot(aes(x = year + 2.5, y = e0)) +
@@ -54,7 +53,7 @@ datM %>%
   pub_theme +
   labs(x = "Year", y = expression(e[0]))
 
-ggsave("plots/life_examples.pdf", height = 7, width = 10)
+ggsave("plots/life_examples.pdf", height = 5, width = 10)
 
 fit <- lifeplus(
   datM,
@@ -72,266 +71,112 @@ fit <- lifeplus(
   hierarchical_splines = c("intercept", "name"),
   
   parallel_chains = 4,
-  iter_warmup = 250,
-  iter_sampling = 500,
+  iter_warmup = 500,
+  iter_sampling = 1e3,
   
   extra_stan_data = list(
     scale_global = 1e-2,
-    slab_scale = 1,
-    slab_df = 1
+    slab_scale = 10,
+    slab_df = 6
   )
 )
 
-fit1 <- lifeplus(
-  datM,
-  y = "e0", 
-  year = "year",
-  area = "name",
-  source = "source",
-  start_year = 1950,
-  end_year = 2100,
-  
-  model = "shock",
-  
-  spline_degree = 2,
-  num_knots = 5, 
-  hierarchical_splines = c("intercept", "name"),
-  
-  parallel_chains = 4,
-  iter_warmup = 250,
-  iter_sampling = 500,
-  
-  extra_stan_data = list(
-    scale_global = 1e-2,
-    slab_scale = 1,
-    slab_df = 1
-  )
-)
+print(fit$samples$cmdstan_diagnose())
 
-fit2 <- lifeplus(
-  datM,
-  y = "e0", 
-  year = "year",
-  area = "name",
-  source = "source",
-  start_year = 1950,
-  end_year = 2100,
-  
-  model = "shock2",
-  
-  spline_degree = 2,
-  num_knots = 5, 
-  hierarchical_splines = c("intercept", "name"),
-  
-  adapt_delta = 0.99,
-  parallel_chains = 4,
-  iter_warmup = 250,
-  iter_sampling = 500,
-  
-  extra_stan_data = list(
-    scale_global = 1e-2,
-    slab_scale = 1,
-    slab_df = 1
-  )
-)
+# What is the 2*SD(eps) threshold?
+threshold <- 2 * fit$samples$summary("epsilon_scale")$median
 
-fit$samples %>% spread_draws(epsilon_scale) %>% mutate(model = "no shocks") %>%
-  bind_rows(
-    fit2$samples %>% spread_draws(epsilon_scale) %>% mutate(model = "with shocks")
-  ) %>%
-  ggplot(aes(x = epsilon_scale, color = model)) +
-  geom_density() +
-  labs(x = "random walk variance")
+# How many of the observed differences fall below this threshold?
+mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
-ggsave("plots/life_random_walk_variance.pdf", height = 5)
+fits <- expand_grid(
+  scale_global = c(1e-3, 1e-2, 1e-1),
+  num_knots = c(7)
+) %>%
+  mutate(fit = map(scale_global, function(scale_global) {
+    lifeplus(
+      datM,
+      y = "e0", 
+      year = "year",
+      area = "name",
+      source = "source",
+      start_year = 1950,
+      end_year = 2100,
+      
+      model = "shock2",
+      
+      spline_degree = 2,
+      num_knots = 5, 
+      hierarchical_splines = c("intercept", "name"),
+      
+      adapt_delta = 0.99,
+      max_treedepth = 12,
+      parallel_chains = 4,
+      iter_warmup = 250,
+      iter_sampling = 1e3,
+      
+      extra_stan_data = list(
+        scale_global = scale_global,
+        slab_scale = 10,
+        slab_df = 6
+      )
+    )
+  }))
 
-
-plot_shock <- function(fit, areas = c()) {
-  shocks <- fit$samples %>% spread_draws(shock[c, t]) %>%
-    left_join(fit$time_index) %>%
-    left_join(fit$country_index)
-  
-  if(length(areas) > 0) {
-    shocks <- shocks %>% filter(name %in% areas)
-  }
-  
-  shocks %>%
-    group_by(year, name) %>%
-    median_qi(shock, .width = c(0.5, 0.8, 0.95)) %>%
-    ggplot(aes(x = year, y = shock)) +
-    geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
-    scale_fill_brewer() +
-    facet_wrap(~name)
-}
-
-plot_P_tilde <- function(fit) {
-  fit$samples %>% spread_draws(P_tilde2[c]) %>%
-    left_join(fit$country_index) %>%
-    group_by(name) %>%
-    mutate(P_tilde2 = 15 + P_tilde2) %>%
-    ggplot(aes(x = P_tilde2)) +
-    geom_density() +
-    facet_wrap(~name)
-}
-
-plot_P_tilde(fit)
-plot_P_tilde(fit2)
-
-plot_shock(fit1, countries)
-plot_shock(fit2, countries)
-
-
-ci_width_comparison <- fit$posteriors$temporal %>%
-  filter(year == 2095) %>%
-  mutate(ci_width_no_shocks = `97.5%` - `2.5%`) %>%
-  select(name, year, ci_width_no_shocks) %>%
-  left_join(
-    fit2$posteriors$temporal %>%
-      filter(year == 2095) %>%
-      mutate(ci_width_shocks = `97.5%` - `2.5%`) %>%
-      select(name, year, ci_width_shocks)    
-  )
-
-ci_width_comparison %>%
-  ggplot(aes(x = ci_width_no_shocks, y = ci_width_shocks)) +
-  geom_point() +
-  geom_abline(slope = 1) +
-  coord_fixed()
-
-ggsave("plots/life_ci_width_comparison_2100.pdf", height = 5)
-
-ci_width_comparison %>%
-  summarize_at(vars(ci_width_no_shocks, ci_width_shocks), median)
-
-countries <- c("Somalia", "Cambodia")
-p1 <- plot_indicator(fit, areas = countries) + 
-  labs(x = "Year", y = expression(e[0]), subtitle = "no shocks") +
-  pub_theme
-
-p2 <- plot_indicator(fit2, areas = countries) + 
-  labs(x = "Year", y = expression(e[0]), subtitle = "level shocks") +
-  pub_theme
-
-(p1 / p2) + plot_layout(guides = "collect")
-ggsave("plots/life_fit_examples.pdf", width = 10, height = 8)
-
-projection_comparison <- fit$posteriors$temporal %>%
-  filter(year == 2095) %>%
-  mutate(median_no_shocks = `50%`) %>%
-  select(name, year, median_no_shocks) %>%
-  left_join(
-    fit2$posteriors$temporal %>%
-      filter(year == 2095) %>%
-      mutate(median_shocks = `50%`) %>%
-      select(name, year, median_shocks)
-  )
-
-projection_comparison %>%
-  mutate(diff = abs(median_no_shocks - median_shocks)) %>%
-  summarize(median(diff))
-
-posterior_median_labels <- projection_comparison %>%
-  filter(median_no_shocks < 60)
-  
-p1 <- projection_comparison %>%
-  ggplot(aes(x = median_no_shocks, y = median_shocks)) +
-  geom_point() +
-  geom_abline(slope = 1, lty = 2) +
-  geom_text(data = posterior_median_labels, aes(label = name), hjust = 0.2, nudge_y = 0.6, nudge_x = 0.8, size = 3) +
-  pub_theme +
-  labs(x = "no shocks",
-       y = "level shocks",
-       subtitle = "posterior median")
-
-ci_width_labels <- ci_width_comparison %>%
-  filter(ci_width_shocks > 24 | ci_width_no_shocks > 30)
-
-p2 <- ci_width_comparison %>%
-  ggplot(aes(x = ci_width_no_shocks, y = ci_width_shocks)) +
-  geom_point() +
-  geom_abline(slope = 1, lty = 2) +
-  geom_text(data = ci_width_labels, aes(label = name), hjust = 1, nudge_x = -0.5, size = 3) +
-  pub_theme +
-  labs(x = "no shocks",
-       y = "level shocks",
-       subtitle = "95% credible interval width")
-
-(p1 + p2) + plot_annotation("Male period life expectancy by country, 2095-2100", tag_levels = "A")
-ggsave("plots/life_projection_comparison.pdf", height = 5, width = 10)
-
+#BayesTransitionModels:::plot_indicator(fits_with_shocks$fit[[1]], areas = "Somalia")
+#BayesTransitionModels:::plot_temporal("eta_crisisfree", fits_with_shocks$fit[[1]], areas = "Somalia")
+#BayesTransitionModels:::plot_temporal("shock", fits_with_shocks$fit[[1]], areas = "Cambodia")
 #
-# Plot all
-#
-
-countries <- sort(unique(fit$data$name))
-
-pdf("plots/life_all_countries.pdf", width = 10, height = 4)
-for(country in countries) {
-  print(country)
-  p1 <- plot_indicator(fit, country) +
-    pub_theme +
-    labs(x = "Year", y = expression(e[0]), subtitle = "no shocks")
-  
-  p2 <- plot_indicator(fit2, country) +
-    pub_theme +
-    labs(x = "Year", y = expression(e[0]), subtitle = expression(shocks~(tau[0]==0.01)))
-  
-  p <- (p1 + p2) + plot_layout(guides = "collect")
-  print(p)
-}
-dev.off()
-
-# Largest shocks
-shocks <- fit2$samples %>% spread_draws(shock[c, t]) %>%
-  left_join(fit2$country_index) %>%
-  left_join(fit2$time_index)
-
-shocks_summarized <- shocks %>%
-  group_by(name, year) %>%
-  median_qi(shock) %>%
-  arrange(shock)
+#name <- "Algeria"
+#BayesTransitionModels:::plot_temporal("eta", fit, name)
+#BayesTransitionModels:::plot_temporal("eta", fits_with_shocks$fit[[1]], name)
+#BayesTransitionModels:::plot_temporal("eta_crisisfree", fits_with_shocks$fit[[1]], name)
+#plot_shock(fits_with_shocks$fit[[1]], name)
 
 #
 # Validations
 #
 
-validation_cutoff <- function(model, cutoff_year, scale_global) {
-  lifeplus(
+validation_cutoff <- function(model, cutoff_year, scale_global, num_knots) {
+  fit <- lifeplus(
     datM,
     y = "e0", 
     year = "year",
     area = "name",
     source = "source",
     start_year = 1950,
-    end_year = 2015,
+    end_year = 2100,
     held_out = datM$year >= cutoff_year,
     
     model = model,
     
     spline_degree = 2,
-    num_knots = 5, 
+    num_knots = num_knots, 
     hierarchical_splines = c("intercept", "name"),
     
+    adapt_delta = 0.99,
+    max_treedepth = 12,
     parallel_chains = 4,
     iter_warmup = 250,
     iter_sampling = 500,
     
     extra_stan_data = list(
-      scale_global = 1e-2,
-      slab_scale = 1,
-      slab_df = 1
+      scale_global = scale_global,
+      slab_scale = 10,
+      slab_df = 6
     )
   )
+  print(fit$samples$cmdstan_diagnose())
+  return(fit)
 }
 
 validations <- expand_grid(
-  model = c("spline", "shock", "shock2"),
+  model = c("spline", "shock2"),
   cutoff_year = c(2005, 2010, 2015),
-  scale_global = c(1e-3, 1e-2, 1e-1)
+  scale_global = c(1e-2),
+  num_knots = c(5, 7)
 ) %>%
-  mutate(fit = pmap(list(model, cutoff_year, scale_global), validation_cutoff))
-
-plot_indicator(validations$fit[[1]], countries)
+  mutate(fit = pmap(list(model, cutoff_year, scale_global, num_knots), validation_cutoff))
 
 validation_measures <- function(fit) {
   fit$data %>%
@@ -345,21 +190,41 @@ validation_measures <- function(fit) {
     mutate(below = e0 < `2.5%`,
            above = e0 > `97.5%`,
            covered = `2.5%` <= e0 & `97.5%` >= e0,
-           error = e0 - `50%`) %>%
-    summarize(below = mean(below),
+           error = e0 - `50%`)
+}
+
+validation_results <-  validations %>%
+  filter(model != "shock") %>%
+  mutate(validation = map(fit, validation_measures))
+
+plot_indicator(validations$fit[[2]], "Iraq")
+
+validation_results %>%
+  filter(cutoff_year == 2015) %>%
+  select(-fit) %>%
+  unnest(validation) %>%
+  select(model, name, error) %>%
+  pivot_wider(names_from = "model", values_from = "error") %>%
+  ggplot(aes(x = spline, y = shock2)) +
+  geom_point() +
+  geom_abline(lty = 2)
+
+validation_results_summary <- validation_results %>%
+  mutate(validation = map(validation, function(validation) {
+    validation %>%
+      summarize(below = mean(below),
               above = mean(above),
               coverage = mean(covered),
               ci_width = median(`97.5%` - `2.5%`),
               median_error = median(error),
               mean_squared_error = mean(error^2),
               median_abs_error = median(abs(error)))
-}
-
-validation_table <- validations %>%
-  mutate(validation = map(fit, validation_measures)) %>%
+  })) %>%
   select(-fit) %>%
   unnest(cols = c(validation)) %>%
-  arrange(cutoff_year, model, scale_global) %>%
+  arrange(cutoff_year, model, scale_global)
+
+validation_table <- validation_results_summary %>%
   select(cutoff_year, model, scale_global, below, coverage, above, ci_width, median_error, median_abs_error) %>%
   mutate_at(vars(below, coverage, above, ci_width, median_error, median_abs_error), signif, 3) %>%
   mutate_at(vars(below, coverage, above), `*`, 100) %>%
@@ -384,59 +249,11 @@ validation_table <- validations %>%
   #mutate(Cutoff = ifelse(index %% 2 == 1, Cutoff, "")) %>%
   select(-index)
 
+validation_table
+
 validation_table %>%
-  filter(scale_global == 0.01) %>%
   select(-scale_global) %>%
   knitr::kable(format = "latex")
 
 validation_table %>%
   knitr::kable(format = "latex")
-
-fit_validation$samples %>% spread_draws(epsilon_scale) %>% ggplot(aes(x = epsilon_scale)) + geom_density()
-fit2_validation$samples %>% spread_draws(epsilon_scale) %>% ggplot(aes(x = epsilon_scale)) + geom_density()
-
-shock_validation_2005 <- validations %>% filter(model == "shock2", cutoff_year == 2005) %>%
-  pull(fit) %>%
-  .[[1]]
-
-fit_validation_2005 <- validations %>% filter(model == "spline", cutoff_year == 2005) %>%
-  pull(fit) %>%
-  .[[1]]
-
-errors <- shock_validation_2005$data %>%
-  mutate(held_out = shock_validation_2005$held_out) %>%
-  filter(held_out == 1) %>%
-  group_by(name) %>%
-  filter(year == max(year)) %>%
-  ungroup() %>%
-  left_join(shock_validation_2005$posteriors$temporal %>%
-              filter(variable == "eta")) %>%
-  mutate(error = e0 - `50%`)
-
-errors %>%
-  ggplot(aes(x = error)) +
-  geom_histogram(color = "white")
-
-overpredictions <- errors %>% arrange(error) %>% select(name, error)
-underpredictions <- errors %>% arrange(-error) %>% select(name, error)
-
-plot_indicator(shock_validation_2005, underpredictions$name[1:6])
-ggsave("plots/life_underpredictions.pdf", height = 6, width = 9)
-
-shock_validation_2005$samples %>%
-  spread_draws(shock[c, t]) %>%
-  left_join(shock_validation_2005$time_index) %>%
-  left_join(shock_validation_2005$country_index) %>%
-  filter(name %in% underpredictions$name[1:6]) %>%
-  group_by(name, year) %>%
-  median_qi(shock, .width = c(0.8, 0.9, 0.95)) %>%
-  ggplot(aes(x = year, y = shock)) +
-  geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
-  scale_fill_brewer() +
-  facet_wrap(~name)
-  
-
-plot_indicator(fit_validation_2005, underpredictions$name[1:6])
-
-plot_indicator(shock_validation_2005, overpredictions$name[1:6])
-ggsave("plots/life_overpredictions.pdf", height = 6, width = 9)

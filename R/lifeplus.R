@@ -29,10 +29,14 @@ lifeplus <- function(
   end_year = NA,
   t_star = NULL,
   
+  crisis_projections = TRUE,
+  
   # Model settings
   model = "spline",
   num_knots = 7,
   spline_degree = 2,
+  
+  country_specific_global_shrinkage = FALSE,
   
   extra_stan_data = list(),
   
@@ -40,6 +44,8 @@ lifeplus <- function(
   
   # Out-of-sample validation
   held_out = FALSE,
+  
+  R = 1e3,
   
   # Stan settings
   ...
@@ -158,7 +164,7 @@ lifeplus <- function(
   
   # Set up spline basis
   knots <- sort(c(seq(0, 1, length.out = num_knots), 1000))
-  grid <- c(seq(from = 0, to = 1, by = .02), 1000) # generating inputs
+  grid <- c(seq(from = 0, to = 1, by = .05), 1000) # generating inputs
   
   B <- t(bs(grid, knots = knots, degree = spline_degree, intercept = FALSE))
   B <- B[1:(nrow(B) - 1), ]
@@ -167,7 +173,7 @@ lifeplus <- function(
   ext_knots <- c(rep(knots[1], spline_degree), knots, rep(knots[length(knots)], spline_degree))
   
   a_lower_bound <- 0.01
-  a_upper_bound <- 5
+  a_upper_bound <- 10 
   
   stan_data <- c(extra_stan_data, list(
     C = nrow(country_index),
@@ -197,7 +203,11 @@ lifeplus <- function(
     B = B,
     
     a_lower_bound = a_lower_bound,
-    a_upper_bound = a_upper_bound
+    a_upper_bound = a_upper_bound,
+    R = R,
+    
+    crisis_in_projections = crisis_projections,
+    country_specific_global_shrinkage = country_specific_global_shrinkage
   ))
   
   fit <- stan_model$sample(
@@ -229,3 +239,4 @@ lifeplus <- function(
   
   result
 }
+

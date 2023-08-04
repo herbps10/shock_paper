@@ -34,8 +34,6 @@ expand_grid(
   facet_grid(s ~ slab_df, scale = "free_y") +
   scale_x_log10()
 
-hist(log(rinvgamma(1e5, 0.5 * 100, 0.5 * 1^2 * 100)))
-
 results_horseshoe <- expand_grid(
   scale_global = c(1e-2, 1e-3, 1e-4, 1e-5),
   index = 1:200
@@ -70,10 +68,6 @@ results <- expand_grid(
     simulate_regularized_horseshoe(1e3, scale_global = scale_global, s = s, slab_df = slab_df)
   }))
 
-shock_threshold <- 0.1
-delta_threshold <- 2 * (log(shock_threshold + 1) - log(1 - shock_threshold))
-#shock_threshold <- 2
-#delta_threshold <- 2
 
 results %>%
   unnest(simulations) %>%
@@ -105,7 +99,6 @@ ggplot(qq, aes(x = qn, y = qemp, color = factor(s))) +
   geom_abline(slope = 1, lty = 2) +
   facet_wrap(~slab_df)
 
-
 results %>%
   unnest(simulations) %>%
   filter(simulations > delta_threshold) %>%
@@ -129,9 +122,6 @@ results %>%
 ggsave("plots/prior_predictive_ecdf.pdf", width = 8, height = 5)
 
 threshold_results <- results %>%
-  #mutate(thresholds = list(tibble(threshold = c(1, 0.5, 0.1, 0.01)))) %>%
-  mutate(thresholds = list(tibble(threshold = c(delta_threshold)))) %>%
-  unnest(thresholds) %>%
   mutate(above_threshold = map2_dbl(simulations, threshold, function(simulations, threshold) mean(abs(simulations) > threshold)))
 
 threshold_results %>%

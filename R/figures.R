@@ -1,7 +1,7 @@
 epsilon_scale <- tidybayes::spread_draws(fit$samples$draws("epsilon_scale"), epsilon_scale) %>%
   mutate(model = "No shocks") %>%
   bind_rows(
-    tidybayes::spread_draws(fits_with_shocks$fit[[1]]$samples$draws("epsilon_scale"), epsilon_scale) %>%
+    tidybayes::spread_draws(fits$fit[[1]]$samples$draws("epsilon_scale"), epsilon_scale) %>%
       mutate(model = "Shocks")
   )
   
@@ -19,7 +19,7 @@ ci_width_comparison <- fit$posteriors$temporal %>%
   mutate(ci_width_no_shocks = `97.5%` - `2.5%`) %>%
   select(name, year, ci_width_no_shocks) %>%
   left_join(
-    fits_with_shocks$fit[[1]]$posteriors$temporal %>%
+    fits$fit[[1]]$posteriors$temporal %>%
       filter(variable == "eta", year == 2095) %>%
       mutate(ci_width_shocks = `97.5%` - `2.5%`) %>%
       select(name, year, ci_width_shocks)    
@@ -30,7 +30,7 @@ projection_comparison <- fit$posteriors$temporal %>%
   mutate(median_no_shocks = `50%`) %>%
   select(name, year, median_no_shocks) %>%
   left_join(
-    fits_with_shocks$fit[[1]]$posteriors$temporal %>%
+    fits$fit[[1]]$posteriors$temporal %>%
       filter(year == 2095, variable == "eta") %>%
       mutate(median_shocks = `50%`) %>%
       select(name, year, median_shocks)
@@ -72,7 +72,7 @@ eta <- fit$posteriors$temporal %>%
   filter(variable == "eta") %>%
   mutate(model = "No shocks") %>%
   bind_rows(
-    fits_with_shocks$fit[[2]]$posteriors$temporal %>%
+    fits$fit[[2]]$posteriors$temporal %>%
       filter(variable == "eta") %>%
       mutate(model = "Shocks") 
   )
@@ -91,7 +91,7 @@ eta %>%
   ggplot(aes(x = year + 2.5, y = `50%`)) +
   geom_ribbon(aes(ymin = `2.5%`, ymax = `97.5%`, fill = model), color = "transparent", alpha = 0.2) +
   geom_line(aes(color = model)) + 
-  geom_point(data = fit$data %>% filter(name %in% countries), aes(y = e0), alpha = 0.5) +
+  geom_point(data = fit$data %>% filter(name %in% countries) %>% mutate(name = factor(name, levels = countries)), aes(y = e0), alpha = 0.5) +
   facet_wrap(~name, nrow = 2) +
   labs(x = "Year", y = expression(e[0]))
 
@@ -102,18 +102,18 @@ ggsave("plots/life_fit_examples.pdf", width = 10, height = 5)
 #
 
 plot_mean_transition(fit)
-plot_mean_transition(fits_with_shocks$fit[[1]])
-plot_mean_transition(fits_with_shocks$fit[[2]])
-plot_mean_transition(fits_with_shocks$fit[[3]])
+plot_mean_transition(fits$fit[[1]])
+plot_mean_transition(fits$fit[[2]])
+plot_mean_transition(fits$fit[[3]])
 
 #
 # Prior/posterior plots
 #
 
-stan_data <- fits_with_shocks$fit[[1]]$stan_data
+stan_data <- fits$fit[[1]]$stan_data
 
 # Prior on c
-caux <- fits_with_shocks %>%
+caux <- fits %>%
   mutate(caux = map(fit, function(fit) {
     spread_draws(fit$samples$draws("caux"), caux)
   })) %>%
@@ -126,7 +126,7 @@ caux %>%
   geom_function(aes(color = "Prior"), fun = function(x) invgamma::dinvgamma(x, 0.5 * stan_data$slab_df, 0.5 * stan_data$slab_df))
 
 # Prior on tau0
-global_shrinkage <- fits_with_shocks %>%
+global_shrinkage <- fits %>%
   mutate(global_shrinkage = map(fit, function(fit) {
     spread_draws(fit$samples$draws("global_shrinkage"), global_shrinkage)
   })) %>%
@@ -155,18 +155,16 @@ largest_shocks <- function(fit) {
     filter(abs(`97.5%`) > threshold_shocks)
 }
 
-largest_shocks(fits_with_shocks$fit[[1]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
-largest_shocks(fits_with_shocks$fit[[2]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
-largest_shocks(fits_with_shocks$fit[[3]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
+largest_shocks(fits$fit[[1]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
+largest_shocks(fits$fit[[2]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
+largest_shocks(fits$fit[[3]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
 
-plot_indicator(fits_with_shocks$fit[[2]], unique(shocks$name))
+countries <- largest_shocks(fits$fit[[2]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`) %>% pull(name) %>% unique()
 
-countries <- largest_shocks(fits_with_shocks$fit[[2]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`) %>% pull(name) %>% unique()
-
-plot_shock_corrected(fits_with_shocks$fit[[2]], countries[1:6])
+plot_shock_corrected(fits$fit[[2]], countries[1:6])
 ggsave("plots/largest_shocks.pdf", width = 8, height = 4)
 
-plot_shock_corrected(fits_with_shocks$fit[[2]], countries)
+plot_shock_corrected(fits$fit[[2]], countries)
 ggsave("plots/all_largest_shocks.pdf", width = 10, height = 8)
 
 #

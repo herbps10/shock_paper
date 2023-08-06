@@ -67,7 +67,7 @@ fit <- lifeplus(
   model = "spline",
   
   spline_degree = 2,
-  num_knots = 5, 
+  num_knots = 7, 
   hierarchical_splines = c("intercept", "name"),
   
   parallel_chains = 4,
@@ -106,7 +106,7 @@ fits <- expand_grid(
       model = "shock2",
       
       spline_degree = 2,
-      num_knots = 5, 
+      num_knots = 7, 
       hierarchical_splines = c("intercept", "name"),
       
       adapt_delta = 0.99,
@@ -170,13 +170,13 @@ validation_cutoff <- function(model, cutoff_year, scale_global, num_knots) {
   return(fit)
 }
 
-validations <- expand_grid(
+validations <- bind_rows(validations, expand_grid(
   model = c("spline", "shock2"),
   cutoff_year = c(2005, 2010, 2015),
   scale_global = c(1e-2),
-  num_knots = c(5, 7)
+  num_knots = c(9)
 ) %>%
-  mutate(fit = pmap(list(model, cutoff_year, scale_global, num_knots), validation_cutoff))
+  mutate(fit = pmap(list(model, cutoff_year, scale_global, num_knots), validation_cutoff)))
 
 validation_measures <- function(fit) {
   fit$data %>%
@@ -225,7 +225,7 @@ validation_results_summary <- validation_results %>%
   arrange(cutoff_year, model, scale_global)
 
 validation_table <- validation_results_summary %>%
-  select(cutoff_year, model, scale_global, below, coverage, above, ci_width, median_error, median_abs_error) %>%
+  select(cutoff_year, model, scale_global, num_knots, below, coverage, above, ci_width, median_error, median_abs_error) %>%
   mutate_at(vars(below, coverage, above, ci_width, median_error, median_abs_error), signif, 3) %>%
   mutate_at(vars(below, coverage, above), `*`, 100) %>%
   mutate_at(vars(below, coverage, above), paste0, "%") %>%

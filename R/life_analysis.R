@@ -26,6 +26,13 @@ datM <- e0M %>%
   mutate(year = parse_integer(str_sub(period, 1, 4)),
          source = "WPP2022")
 
+datM %>%
+  group_by(name) %>%
+  mutate(diff = c(NA, diff(e0))) %>%
+  filter(e0 > 55) %>%
+  ggplot(aes(x = e0, y = diff)) +
+  geom_point()
+
 # Number of countries after filtering
 datM %>%
   distinct(name) %>%
@@ -170,13 +177,15 @@ validation_cutoff <- function(model, cutoff_year, scale_global, num_knots) {
   return(fit)
 }
 
-validations <- bind_rows(validations, expand_grid(
+validations <- expand_grid(
   model = c("spline", "shock2"),
+  #model = c("shock2"),
   cutoff_year = c(2005, 2010, 2015),
+  #cutoff_year = 2005,
   scale_global = c(1e-2),
-  num_knots = c(9)
+  num_knots = c(7)
 ) %>%
-  mutate(fit = pmap(list(model, cutoff_year, scale_global, num_knots), validation_cutoff)))
+  mutate(fit = pmap(list(model, cutoff_year, scale_global, num_knots), validation_cutoff))
 
 validation_measures <- function(fit) {
   fit$data %>%
@@ -186,10 +195,14 @@ validation_measures <- function(fit) {
     filter(year == max(year)) %>%
     ungroup() %>%
     left_join(fit$posteriors$temporal %>%
-      filter(variable == "eta")) %>%
+      filter(variable %in% c("eta", "eta_crisisfree"))) %>%
+    group_by(variable) %>%
     mutate(below = e0 < `2.5%`,
            above = e0 > `97.5%`,
            covered = `2.5%` <= e0 & `97.5%` >= e0,
+           below0.1 = e0 < `10%`,
+           above0.9 = e0 > `90%`,
+           covered0.8 = `10%` <= e0 & `90%` >= e0,
            error = e0 - `50%`)
 }
 
@@ -197,13 +210,13 @@ validation_results <-  validations %>%
   filter(model != "shock") %>%
   mutate(validation = map(fit, validation_measures))
 
-plot_indicator(validations$fit[[2]], "Iraq")
+plot_indicator(validations$fit[[1]], "Kuwait")
 
 validation_results %>%
   filter(cutoff_year == 2015) %>%
   select(-fit) %>%
   unnest(validation) %>%
-  select(model, name, error) %>%
+  select(model, name, error, variable) %>%
   pivot_wider(names_from = "model", values_from = "error") %>%
   ggplot(aes(x = spline, y = shock2)) +
   geom_point() +
@@ -212,10 +225,16 @@ validation_results %>%
 validation_results_summary <- validation_results %>%
   mutate(validation = map(validation, function(validation) {
     validation %>%
-      summarize(below = mean(below),
+      group_by(variable) %>%
+      summarize(n_below = sum(below),
+                below = mean(below),
               above = mean(above),
               coverage = mean(covered),
               ci_width = median(`97.5%` - `2.5%`),
+              below0.1 = mean(below0.1),
+              above0.9 = mean(above0.9),
+              coverage0.8 = mean(covered0.8),
+              ci_width0.8 = median(`90%` - `10%`),
               median_error = median(error),
               mean_squared_error = mean(error^2),
               median_abs_error = median(abs(error)))
@@ -225,10 +244,10 @@ validation_results_summary <- validation_results %>%
   arrange(cutoff_year, model, scale_global)
 
 validation_table <- validation_results_summary %>%
-  select(cutoff_year, model, scale_global, num_knots, below, coverage, above, ci_width, median_error, median_abs_error) %>%
-  mutate_at(vars(below, coverage, above, ci_width, median_error, median_abs_error), signif, 3) %>%
-  mutate_at(vars(below, coverage, above), `*`, 100) %>%
-  mutate_at(vars(below, coverage, above), paste0, "%") %>%
+  select(cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) %>%
+  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8, ci_width, ci_width0.8, median_error, median_abs_error), signif, 3) %>%
+  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), `*`, 100) %>%
+  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), paste0, "%") %>%
   mutate(model = case_when(
     model == "shock2" ~ "level shocks",
     model == "shock" ~ "rate shocks",
@@ -243,6 +262,10 @@ validation_table <- validation_results_summary %>%
          `% Included` = coverage,
          `% Above` = above,
          `CI Width` = ci_width,
+         `% Below (0.8)` = below0.1,
+         `% Included (0.8)` = coverage0.8,
+         `% Above (0.8)` = above0.9,
+         `CI Width (0.8)` = ci_width0.8,
          ME = median_error,
          MAE = median_abs_error
          ) %>%
@@ -255,5 +278,14 @@ validation_table %>%
   select(-scale_global) %>%
   knitr::kable(format = "latex")
 
-validation_table %>%
-  knitr::kable(format = "latex")
+plot_life_transition <- function(fit) {
+  fit$posteriors$transition_function_mean %>% 
+    ggplot(aes(x = x, y = transition_function_mean)) +
+    geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
+    geom_line() +
+    scale_fill_brewer()
+}
+
+plot_life_transition(validations$fit[[4]])
+plot_life_transition(validations$fit[[5]])
+plot_life_transition(validations$fit[[6]])

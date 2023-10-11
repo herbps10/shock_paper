@@ -101,10 +101,19 @@ ggsave("plots/life_fit_examples.pdf", width = 10, height = 5)
 # Compare transition functions
 #
 
-plot_mean_transition(fit)
 plot_mean_transition(fits$fit[[1]])
-plot_mean_transition(fits$fit[[2]])
 plot_mean_transition(fits$fit[[3]])
+
+p1 <- plot_mean_transition(fit) + ylim(c(0, 10)) + labs(x = expression(e0), y = expression(f[b])) +
+  theme(legend.position = "none") +
+  ggtitle(label = "No shocks")
+p2 <- plot_mean_transition(fits$fit[[2]]) + ylim(c(0, 7)) + labs(x = expression(e0), y = expression(f[b])) +
+  theme(legend.position = "none") +
+  ggtitle(label = "Shocks")
+
+p1 / p2
+
+ggsave("plots/transition_function_comparisons.pdf", width = 8, height = 5)
 
 #
 # Prior/posterior plots

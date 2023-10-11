@@ -76,7 +76,7 @@ plot_with_shocks <- function(fit, area) {
 
 plot_shock_corrected <- function(fit, areas) {
   threshold <- 2 * fit$samples$summary("epsilon_scale")$median
-  shock_fit$data %>% 
+  fit$data %>% 
     filter(name %in% areas) %>%
     left_join(
       fit$posteriors$temporal %>% 

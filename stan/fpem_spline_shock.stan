@@ -253,7 +253,7 @@ transformed parameters {
       for(q in 1:(t_star[c] - 1)) {
         int t = t_star[c] - q;
         transition_function = rate_spline(inv_logit(logit_eta[t + 1]), P_tilde[c], a[c,], ext_knots, num_basis, spline_degree);
-        logit_eta[t] = logit_eta[t + 1] - transition_function + shock[c, t + 1];
+        logit_eta[t] = logit_eta[t + 1] - transition_function - shock[c, t + 1];
       }
     }
 

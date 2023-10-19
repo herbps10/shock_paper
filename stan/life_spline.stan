@@ -14,7 +14,7 @@ data {
   int R;
   int t_last;
 
-  array[N] y;                         // Observations
+  vector[N] y;                         // Observations
   array[N] int<lower=1, upper=T> time;     // Time of each observation
   array[N] int<lower=1, upper=C> country;  // Country of each observation
   array[N] int<lower=0, upper=1> held_out;

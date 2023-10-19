@@ -1,0 +1,57 @@
+---
+title: "Prior-post"
+output: html_notebook
+---
+
+LA start of Rmd with prior post checks, to be finished 
+
+run after fitting models 
+```{r}
+library(bayesplot)
+```
+
+# splines 
+
+usage: invlogit transform to get between 0 and 10 for earlier coefficients, then between 0 and 1.15 
+## no shocks
+```{r}
+parname <- "a_sigma" 
+samp <- fit$samples$draws(parname )
+#mcmc_trace(samp)
+mcmc_dens_overlay(samp)
+```
+prior was half-standard normal, seems quite constrained for low splines index...
+but possibly also the last one? 
+ 
+```{r}
+parname <- "a_mu" 
+samp <- fit$samples$draws(parname )
+#mcmc_trace(samp)
+mcmc_dens_overlay(samp)
+```
+st normal on a_mu too constrained...
+
+note differences in a_mu
+- st normal in no shocks
+- n(0,3) in shocks 2
+
+
+# shocks 
+```{r}
+parname <- "a_sigma" 
+samp <- fits$fit[[1]]$samples$draws(parname )
+#mcmc_trace(samp)
+mcmc_dens_overlay(samp)
+```
+
+
+
+    
+```{r}
+parname <- "a_mu" 
+samp <- fits$fit[[1]]$samples$draws(parname )
+#mcmc_trace(samp)
+mcmc_dens_overlay(samp)
+```
+
+    

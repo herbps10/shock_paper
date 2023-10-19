@@ -27,6 +27,7 @@ install_github("AlkemaLab/BayesTransitionModels")
 # just running one setting
 fits <- expand_grid(
   scale_global = 1e-2, #c(1e-3, 1e-2, 1e-1),
+  # actually paper has 0.1 but posteriors are similar
   num_knots = c(7)
 ) %>%
   mutate(fit = map(scale_global, function(scale_global) {
@@ -88,4 +89,9 @@ fit <- lifeplus(
 )
 
 saveRDS(fit, "outputs/fit_la20231019.rds")
+
+# check prior and post for the hyperpar related to splines coefficients
+# in rmd
+
+
 

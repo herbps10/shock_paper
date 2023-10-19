@@ -14,10 +14,10 @@ data {
   int R;
   int t_last;
 
-  real y[N];                         // Observations
-  int<lower=1, upper=T> time[N];     // Time of each observation
-  int<lower=1, upper=C> country[N];  // Country of each observation
-  int<lower=0, upper=1> held_out[N];
+  array[N] y;                         // Observations
+  array[N] int<lower=1, upper=T> time;     // Time of each observation
+  array[N] int<lower=1, upper=C> country;  // Country of each observation
+  array[N] int<lower=0, upper=1> held_out;
 
   int num_knots;
   vector[num_knots] knots;
@@ -34,23 +34,23 @@ data {
 transformed data {
   int num_basis = num_knots + spline_degree - 1;
   vector[2 * spline_degree + num_knots] ext_knots;
-  
+
   array[C] int final_observed = rep_array(0, C);
-  
+
   matrix[C, t_last] ymat = rep_matrix(0, C, t_last);
 
   ext_knots[1:spline_degree] = rep_vector(knots[1], spline_degree);
   ext_knots[(num_knots + spline_degree + 1):(num_knots + 2 * spline_degree)] = rep_vector(knots[num_knots], spline_degree);
   ext_knots[(spline_degree + 1):(num_knots + spline_degree)] = knots;
-  
+
   for(i in 1:N) {
     ymat[country[i], time[i]] = y[i];
-    
+
     if(held_out[i] == 0 && time[i] > final_observed[country[i]]) {
       final_observed[country[i]] = time[i];
     }
   }
-  
+
   real P_tilde = 15;
   real P_tilde2 = 85;
 }
@@ -60,7 +60,7 @@ parameters {
   vector[num_basis - 2] a_mu;
   matrix[C, num_basis - 2] a_raw;
   vector<lower=0>[num_basis - 2] a_sigma;
-  
+
   //vector[C] Omega_raw;
   //real P_tilde2_mu;
   //real<lower=0> P_tilde2_sigma;
@@ -72,7 +72,7 @@ parameters {
 transformed parameters {
   matrix[C, t_last] transition_function = rep_matrix(0, C, t_last);
   matrix[C, num_basis] a = rep_matrix(0, C, num_basis);
-  
+
   // Initialize the spline coefficients
   for(i in 1:(num_basis - 3)) {
     a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[i] + a_raw[,i] * a_sigma[i]);
@@ -93,7 +93,7 @@ model {
   to_vector(a_raw) ~ std_normal();
 
   epsilon_scale ~ inv_gamma(0.1, 0.1);
-  
+
   //P_tilde2_mu ~ std_normal();
   //P_tilde2_sigma ~ std_normal();
   //P_tilde2_raw ~ std_normal();
@@ -108,27 +108,27 @@ generated quantities {
   matrix[C, T] eta;
   matrix[C, num_grid] transition_function_pred;
   vector[num_grid] transition_function_mean;
-  
+
   {
     vector[num_basis] a_mean;
     a_mean[1:(num_basis - 3)] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[1:(num_basis - 3)]);
     a_mean[num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2]);
     a_mean[(num_basis - 1):num_basis] = rep_vector(a_mean[num_basis - 2], 2);
-    
+
     for(i in 1:num_grid) {
       transition_function_mean[i] = rate_spline(grid[i], 0, 1, to_row_vector(a_mean), ext_knots, num_basis, spline_degree);
     }
   }
-  
+
   for(c in 1:C) {
     eta[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
-    
+
     for(t in (final_observed[c] + 1):T) {
       real error = normal_rng(0, epsilon_scale);
       real transition = rate_spline(eta[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
       eta[c, t] = eta[c, t - 1] + transition + error;
     }
-    
+
     for(i in 1:num_grid) {
       transition_function_pred[c, i] = rate_spline(grid[i], 0, 1, a[c,], ext_knots, num_basis, spline_degree);
     }

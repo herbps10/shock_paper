@@ -3,7 +3,8 @@ functions {
   #include ./deboor.stan
 
   real rate_spline(real P, real P_tilde, real P_tilde2, row_vector a, vector ext_knots, int num_basis, int spline_degree) {
-    return deboor((P - P_tilde) / P_tilde2, ext_knots, a, spline_degree);
+    //return deboor((P - P_tilde) / P_tilde2, ext_knots, a, spline_degree);
+    return deboor((P - P_tilde) / (P_tilde2 - P_tilde), ext_knots, a, spline_degree);
   }
 
   real normal_lub_rng(real mu, real sigma, real lb, real ub) {
@@ -140,18 +141,22 @@ transformed parameters {
   for(c in 1:C) {
     a[c, (num_basis - 1):num_basis] = rep_row_vector(a[c, num_basis - 2], 2);
     for(t in 2:final_observed[c]) {
-      transition_function[c, t] = rate_spline(ymat[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
+//      transition_function[c, t] = rate_spline(ymat[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
+// let expected change follow from shock-free level
+      transition_function[c, t] = rate_spline(ymat[c, t - 1] - shock[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
       gamma[c, t] = transition_function[c, t] + shock[c, t] - shock[c, t - 1];
     }
   }
 }
 
 model {
-  a_mu ~ normal(0, 3);
+  a_mu ~ normal(0, 15);
   to_vector(a_raw) ~ std_normal();
-  a_sigma ~ std_normal();
+  a_sigma ~ normal(0, 5); // increasing prior variance based on checks
 
-  epsilon_scale ~ inv_gamma(0.1, 0.1);
+  // here inv gamma is on SD, should be on variance instead
+  // epsilon_scale ~ inv_gamma(0.1, 0.1);
+  epsilon_scale ~ normal(0, 5);
 
   //P_tilde2_mu ~ std_normal();
   //P_tilde2_sigma ~ std_normal();
@@ -187,6 +192,7 @@ generated quantities {
   }
 
   for(c in 1:C) {
+    //to do: remove shocks to get eta_crisisfree!
     eta_crisisfree[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
 
     for(t in (final_observed[c] + 1):T) {

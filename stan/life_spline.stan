@@ -73,6 +73,7 @@ transformed parameters {
   matrix[C, t_last] transition_function = rep_matrix(0, C, t_last);
   matrix[C, num_basis] a = rep_matrix(0, C, num_basis);
 
+
   // Initialize the spline coefficients
   for(i in 1:(num_basis - 3)) {
     a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[i] + a_raw[,i] * a_sigma[i]);
@@ -85,14 +86,19 @@ transformed parameters {
       transition_function[c, t] = rate_spline(ymat[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
     }
   }
+
+
 }
 
 model {
-  a_mu ~ std_normal();
-  a_sigma ~ std_normal();
+   a_mu ~ normal(0, 15);
+  // a_sigma ~ std_normal();
+  a_sigma ~ normal(0, 5); // increasing prior variance based on checks
   to_vector(a_raw) ~ std_normal();
 
-  epsilon_scale ~ inv_gamma(0.1, 0.1);
+  // here inv gamma is on SD, should be on variance instead
+  // epsilon_scale ~ inv_gamma(0.1, 0.1);
+  epsilon_scale ~ normal(0, 5);
 
   //P_tilde2_mu ~ std_normal();
   //P_tilde2_sigma ~ std_normal();
@@ -110,6 +116,7 @@ generated quantities {
   vector[num_grid] transition_function_mean;
 
   {
+    // mean transition function based on a_mu, consider mean of country functions as well
     vector[num_basis] a_mean;
     a_mean[1:(num_basis - 3)] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[1:(num_basis - 3)]);
     a_mean[num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2]);

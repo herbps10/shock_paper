@@ -1,12 +1,12 @@
 
 # la using code from life_analysis.R
 # wpp2022 from github
-library(devtools)
-options(timeout = 600)
-install_github("PPgp/wpp2022")
-
-# just adding a new install of bayestransition too
-install_github("AlkemaLab/BayesTransitionModels")
+# library(devtools)
+# options(timeout = 600)
+# install_github("PPgp/wpp2022")
+#
+# # just adding a new install of bayestransition too
+# install_github("AlkemaLab/BayesTransitionModels")
 
 # I got errors becasue of int[N] declarations, changed to array[N]
 # Error in '/var/folders/pw/nmbdn6h568bdb6hlj9r6rzhcvkpjdp/T/RtmpGiKKLh/model-1248952071ee0.stan', line 17, column 2: Declaration
@@ -61,6 +61,7 @@ fits <- expand_grid(
   }))
 
 saveRDS(fits, "outputs/fits_wshock_la20231019.rds")
+#fits <- readRDS("outputs/fits_wshock_la20231019.rds")
 
 fit <- lifeplus(
   datM,
@@ -78,8 +79,8 @@ fit <- lifeplus(
   hierarchical_splines = c("intercept", "name"),
 
   parallel_chains = 4,
-  iter_warmup = 500,
-  iter_sampling = 1e3,
+  iter_warmup = 250,
+  iter_sampling = 500,
 
   extra_stan_data = list(
     scale_global = 1e-2,
@@ -89,6 +90,7 @@ fit <- lifeplus(
 )
 
 saveRDS(fit, "outputs/fit_la20231019.rds")
+#fit <- readRDS("outputs/fit_la20231019.rds")
 
 # check prior and post for the hyperpar related to splines coefficients
 # in rmd

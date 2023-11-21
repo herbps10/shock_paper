@@ -50,6 +50,8 @@ data {
   real<lower=0> scale_global;
   real<lower=0> slab_scale;
   real<lower=0> slab_df;
+  int<lower=0, upper=1> normal_data_model;
+  real<lower=0> data_model_df;
 }
 transformed data {
   int num_basis = num_knots + spline_degree - 1;
@@ -83,13 +85,14 @@ transformed data {
 
   real P_tilde = 15;
   real P_tilde2 = 85;
+  int hierarchical = 1;
 }
 
 parameters {
   // Spline rate vs. level function
-  vector[num_basis - 2] a_mu;
+  vector[hierarchical * (num_basis - 2)] a_mu;
   matrix[C, num_basis - 2] a_raw;
-  vector<lower=0>[num_basis - 2] a_sigma;
+  vector<lower=0>[hierarchical * (num_basis - 2)] a_sigma;
 
   //vector[C] Omega_raw;
   //real P_tilde2_mu;
@@ -133,10 +136,20 @@ transformed parameters {
 
   // Initialize the non-zero spline coefficients
   for(i in 1:(num_basis - 3)) {
-    a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[i] + a_raw[,i] * a_sigma[i]);
+    if(hierarchical == 1) {
+      a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[i] + a_raw[,i] * a_sigma[i]);  
+    }
+    else {
+      a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_raw[,i]);
+    }
     //a[, i] = a_lower_bound + exp(a_mu[i] + a_raw[,i] * a_sigma[i]);
   }
-  a[, num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2] + a_raw[,num_basis - 2] * a_sigma[num_basis - 2]);
+  if(hierarchical == 1) {
+    a[, num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2] + a_raw[,num_basis - 2] * a_sigma[num_basis - 2]);
+  }
+  else {
+    a[, num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_raw[,num_basis - 2]);
+  }
 
   for(c in 1:C) {
     a[c, (num_basis - 1):num_basis] = rep_row_vector(a[c, num_basis - 2], 2);
@@ -150,9 +163,11 @@ transformed parameters {
 }
 
 model {
-  a_mu ~ normal(0, 15);
+  if(hierarchical == 1) {
+    a_mu ~ normal(0, 15);
+    a_sigma ~ normal(0, 5); // increasing prior variance based on checks
+  }
   to_vector(a_raw) ~ std_normal();
-  a_sigma ~ normal(0, 5); // increasing prior variance based on checks
 
   // here inv gamma is on SD, should be on variance instead
   // epsilon_scale ~ inv_gamma(0.1, 0.1);
@@ -169,7 +184,12 @@ model {
 
   for(i in 1:N) {
     if(held_out[i] == 0 && time[i] > 1) {
-      (ymat[country[i], time[i]] - ymat[country[i], time[i] - 1]) ~ normal(gamma[country[i], time[i]], epsilon_scale);
+      if(normal_data_model == 1) {
+        (ymat[country[i], time[i]] - ymat[country[i], time[i] - 1]) ~ normal(gamma[country[i], time[i]], epsilon_scale);
+      }
+      else {
+        (ymat[country[i], time[i]] - ymat[country[i], time[i] - 1]) ~ student_t(data_model_df, gamma[country[i], time[i]], epsilon_scale);
+      }
     }
   }
 }
@@ -177,11 +197,18 @@ generated quantities {
   matrix[C, T] eta;
   matrix[C, T] eta_crisisfree;
   matrix[C, T] shock2;
+  vector[N] pit = rep_vector(-1, N);
+  
+  for(i in 1:N) {
+    if(time[i] > 1) {
+      pit[i] = normal_cdf(ymat[country[i], time[i]] - ymat[country[i], time[i] - 1] | gamma[country[i], time[i]], epsilon_scale);
+    }
+  }
 
   matrix[C, num_grid] transition_function_pred;
   vector[num_grid] transition_function_mean;
 
- {
+  if(hierarchical == 1) {
     vector[num_basis] a_mean;
     a_mean[1:(num_basis - 3)] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[1:(num_basis - 3)]);
     a_mean[num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2]);
@@ -196,7 +223,13 @@ generated quantities {
     eta_crisisfree[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
 
     for(t in (final_observed[c] + 1):T) {
-      real error = normal_rng(0, epsilon_scale);
+      real error;
+      if(normal_data_model == 1) {
+        error = normal_rng(0, epsilon_scale);
+      }
+      else {
+        error = student_t_rng(data_model_df, 0, epsilon_scale);
+      }
       real transition_crisisfree = rate_spline(eta_crisisfree[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
       eta_crisisfree[c, t] = eta_crisisfree[c, t - 1] + transition_crisisfree + error;
     }
@@ -205,11 +238,17 @@ generated quantities {
     shock2[c, 1:(final_observed[c])] = shock[c, 1:(final_observed[c])];
 
     for(t in (final_observed[c] + 1):T) {
-      real error = normal_rng(0, epsilon_scale);
+      real error;
+      if(normal_data_model == 1) {
+        error = normal_rng(0, epsilon_scale);
+      }
+      else {
+        error = student_t_rng(data_model_df, 0, epsilon_scale);
+      }
 
       shock2[c, t] = shock_rng(nu_local, c_slab, global_shrinkage);
 
-      real transition = rate_spline(eta[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
+      real transition = rate_spline(eta[c, t - 1] - shock2[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
 
       eta[c, t] = eta[c, t - 1] + transition + error + shock2[c, t] - shock2[c, t - 1];
     }

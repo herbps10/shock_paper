@@ -36,6 +36,9 @@ lifeplus <- function(
   num_knots = 7,
   spline_degree = 2,
   
+  normal_data_model = TRUE,
+  data_model_df = 5,
+  
   country_specific_global_shrinkage = FALSE,
   
   extra_stan_data = list(),
@@ -164,6 +167,7 @@ lifeplus <- function(
   
   # Set up spline basis
   knots <- sort(c(seq(0, 1, length.out = num_knots), 1000))
+  #knots <- c((c(15, 30, 45, 50, 55, 60, 65, 70, 75, 80, 85) - 15) / (85 - 15), 1000)
   grid <- c(seq(from = 0, to = 1, by = .05), 1000) # generating inputs
   
   B <- t(bs(grid, knots = knots, degree = spline_degree, intercept = FALSE))
@@ -207,7 +211,10 @@ lifeplus <- function(
     R = R,
     
     crisis_in_projections = crisis_projections,
-    country_specific_global_shrinkage = country_specific_global_shrinkage
+    country_specific_global_shrinkage = country_specific_global_shrinkage,
+    
+    normal_data_model = normal_data_model,
+    data_model_df = data_model_df
   ))
   
   fit <- stan_model$sample(

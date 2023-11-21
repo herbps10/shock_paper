@@ -30,6 +30,9 @@ data {
 
   real a_lower_bound;
   real a_upper_bound;
+  
+  int<lower=0, upper=1> normal_data_model;
+  real<lower=0> data_model_df;
 }
 transformed data {
   int num_basis = num_knots + spline_degree - 1;
@@ -53,13 +56,15 @@ transformed data {
 
   real P_tilde = 15;
   real P_tilde2 = 85;
+  
+  int hierarchical = 1;
 }
 
 parameters {
   // Spline rate vs. level function
-  vector[num_basis - 2] a_mu;
+  vector[hierarchical * (num_basis - 2)] a_mu;
+  vector<lower=0>[hierarchical * (num_basis - 2)] a_sigma;
   matrix[C, num_basis - 2] a_raw;
-  vector<lower=0>[num_basis - 2] a_sigma;
 
   //vector[C] Omega_raw;
   //real P_tilde2_mu;
@@ -73,12 +78,21 @@ transformed parameters {
   matrix[C, t_last] transition_function = rep_matrix(0, C, t_last);
   matrix[C, num_basis] a = rep_matrix(0, C, num_basis);
 
-
   // Initialize the spline coefficients
   for(i in 1:(num_basis - 3)) {
-    a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[i] + a_raw[,i] * a_sigma[i]);
+    if(hierarchical == 1) {
+      a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[i] + a_raw[,i] * a_sigma[i]);
+    }
+    else {
+      a[, i] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_raw[,i]);
+    }
   }
-  a[, num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2] + a_raw[,num_basis - 2] * a_sigma[num_basis - 2]);
+  if(hierarchical == 1) {
+    a[, num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2] + a_raw[,num_basis - 2] * a_sigma[num_basis - 2]);
+  }
+  else {
+    a[, num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_raw[,num_basis - 2]);
+  }
 
   for(c in 1:C) {
     a[c, (num_basis - 1):num_basis] = rep_row_vector(a[c, num_basis - 2], 2);
@@ -91,9 +105,11 @@ transformed parameters {
 }
 
 model {
-   a_mu ~ normal(0, 15);
-  // a_sigma ~ std_normal();
-  a_sigma ~ normal(0, 5); // increasing prior variance based on checks
+  if(hierarchical == 1) {
+    a_mu ~ normal(0, 15);
+    a_sigma ~ normal(0, 5); // increasing prior variance based on checks
+    // a_sigma ~ std_normal();
+  }
   to_vector(a_raw) ~ std_normal();
 
   // here inv gamma is on SD, should be on variance instead
@@ -106,7 +122,12 @@ model {
 
   for(i in 1:N) {
     if(held_out[i] == 0 && time[i] > 1) {
-      (ymat[country[i], time[i]] - ymat[country[i], time[i] - 1]) ~ normal(transition_function[country[i], time[i]], epsilon_scale);
+      if(normal_data_model == 1) {
+        (ymat[country[i], time[i]] - ymat[country[i], time[i] - 1]) ~ normal(transition_function[country[i], time[i]], epsilon_scale);
+      }
+      else {
+        (ymat[country[i], time[i]] - ymat[country[i], time[i] - 1]) ~ student_t(data_model_df, transition_function[country[i], time[i]], epsilon_scale);
+      }
     }
   }
 }
@@ -115,7 +136,7 @@ generated quantities {
   matrix[C, num_grid] transition_function_pred;
   vector[num_grid] transition_function_mean;
 
-  {
+  if(hierarchical == 1) {
     // mean transition function based on a_mu, consider mean of country functions as well
     vector[num_basis] a_mean;
     a_mean[1:(num_basis - 3)] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[1:(num_basis - 3)]);
@@ -131,7 +152,13 @@ generated quantities {
     eta[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
 
     for(t in (final_observed[c] + 1):T) {
-      real error = normal_rng(0, epsilon_scale);
+      real error;
+      if(normal_data_model == 1) {
+        error = normal_rng(0, epsilon_scale);
+      }
+      else {
+        error = student_t_rng(data_model_df, 0, epsilon_scale);
+      }
       real transition = rate_spline(eta[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
       eta[c, t] = eta[c, t - 1] + transition + error;
     }

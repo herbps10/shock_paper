@@ -220,7 +220,8 @@ generated quantities {
 
   for(c in 1:C) {
     //to do: remove shocks to get eta_crisisfree!
-    eta_crisisfree[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
+    //eta_crisisfree[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
+    eta_crisisfree[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]] - shock[c, 1:final_observed[c]];
 
     for(t in (final_observed[c] + 1):T) {
       real error;

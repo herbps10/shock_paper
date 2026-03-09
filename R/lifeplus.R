@@ -35,6 +35,7 @@ lifeplus <- function(
   model = "spline",
   num_knots = 7,
   spline_degree = 2,
+  outlier_threshold = 1000,
   
   normal_data_model = TRUE,
   data_model_df = 5,
@@ -112,6 +113,12 @@ lifeplus <- function(
   else if(model == "shock2") {
     stan_file_path <- "stan/life_spline_shock2.stan"
   }
+  else if(model == "logistic") {
+    stan_file_path <- "stan/life_double_logistic.stan"
+  }
+  else if(model == "logistic_shock") {
+    stan_file_path <- "stan/life_double_logistic_shock.stan"
+  }
   else {
     stop(glue::glue("Model {model} not supported. Currently \"spline\" is the only supported model."))
   }
@@ -143,7 +150,7 @@ lifeplus <- function(
   
   # Create year lookup table
   time_index <- tibble(
-    year = seq(start_year, end_year, 5),
+    year = seq(start_year, end_year, 1),
     t = 1:length(year)
   ) 
   
@@ -166,9 +173,14 @@ lifeplus <- function(
   a_data       <- BayesTransitionModels:::hierarchical_data(country_index, hierarchical_splines)
   
   # Set up spline basis
-  knots <- sort(c(seq(0, 1, length.out = num_knots), 1000))
+  knots <- sort(c(seq(0, (max(data[[y]]) - 15) / (110 - 15), length.out = num_knots), 1, 2))
   #knots <- c((c(15, 30, 45, 50, 55, 60, 65, 70, 75, 80, 85) - 15) / (85 - 15), 1000)
-  grid <- c(seq(from = 0, to = 1, by = .05), 1000) # generating inputs
+  if(model == "logistic" || model == "logistic_shock") {
+    grid <- c(seq(from = 0, to = 110, by = 5)) # generating inputs
+  }
+  else {
+    grid <- c(seq(from = 0, to = 1, by = .05)) # generating inputs
+  }
   
   B <- t(bs(grid, knots = knots, degree = spline_degree, intercept = FALSE))
   B <- B[1:(nrow(B) - 1), ]
@@ -190,6 +202,8 @@ lifeplus <- function(
     country = array(data$c),
     
     y = array(data[[y]]),
+    
+    outlier_threshold = outlier_threshold,
     
     a_n_terms = a_data$n_terms,
     a_n_re = a_data$n_re,

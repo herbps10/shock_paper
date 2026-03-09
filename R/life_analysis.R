@@ -1,5 +1,5 @@
 library(tidyverse)
-library(wpp2022)
+library(wpp2024)
 library(BayesTransitionModels)
 library(tidybayes)
 library(bayesLife)
@@ -9,117 +9,97 @@ source("R/plot_theme.R")
 source("R/lifeplus.R")
 source("R/process_lifeplus.R")
 
-data(e0M)
-data(pop5)
-data(include_2010)
+data(UNlocations, package = "wpp2024")
+data(e0M1, package = "wpp2024")
+data(pop1, package = "wpp2024")
+data(include_2010, package = "bayesTFR")
 
 
 # Number of countries before filtering
-e0M %>%
-  filter(country_code < 900) %>%
-  distinct(name) %>%
+e0M1 |>
+  filter(country_code < 900) |>
+  distinct(name) |>
   nrow()
 
-included_codes <- include_2010 %>% filter(include_code %in% 1:2) %>% pull(country_code)
+included_codes <- include_2010 |> filter(include_code %in% 1:2) |> pull(country_code)
 
-large_countries <- pop5 %>%
-  filter(`2020` >= 100) %>%
+large_countries <- pop1 |>
+  filter(`2020` >= 1e3) |>
+  #filter(`2020` >= 1e4) |>
   pull(name)
 
-datM <- e0M %>%
-  filter(name %in% large_countries) %>%
-  pivot_longer(cols = `1950-1955`:`2015-2020`, names_to = "period", values_to = "e0") %>%
-  filter(country_code %in% included_codes) %>%
+datM <- e0M1 |>
+  filter(name %in% large_countries) |>
+  pivot_longer(cols = `1950`:`2023`, names_to = "period", values_to = "e0") |>
+  filter(country_code %in% included_codes) |>
   mutate(year = parse_integer(str_sub(period, 1, 4)),
-         source = "WPP2022")
+         source = "WPP2024")
 
-datM_diffs <- datM %>%
-  group_by(name) %>%
+datM_diffs <- datM |>
+  group_by(name) |>
   mutate(diff = c(NA, diff(e0)))
 
-datM_diffs %>%
-  filter(e0 > 55) %>%
+datM_diffs |>
+  filter(e0 > 55) |>
   ggplot(aes(x = e0, y = diff)) +
   geom_point() +
   geom_smooth()
 
-datM %>%
-  group_by(name) %>%
-  mutate(diff = c(NA, diff(e0)))  %>%
-  group_by(period) %>%
+datM |>
+  group_by(name) |>
+  mutate(diff = c(NA, diff(e0)))  |>
+  group_by(period) |>
   summarize(mean = mean(diff))
 
 # Number of countries after filtering
-datM %>%
-  distinct(name) %>%
+datM |>
+  distinct(name) |>
   nrow()
 
 # Histogram of changes in e0
-e0_differences <- datM %>%
-  group_by(name) %>%
+e0_differences <- datM |>
+  group_by(name) |>
   mutate(diff = c(NA, diff(e0)))
 
-e0_differences %>%
+e0_differences |>
   ggplot(aes(x = diff)) +
   geom_histogram(color = "white", binwidth = 1) +
   geom_boxplot(aes(y = -20), width = 30, alpha = 0.5) +
   labs(x = expression(paste("Difference in ", e[0], ": ", eta[ct] - eta[ct-1])), y = "Count")
 
-countries <- c("Republic of Korea", "Bosnia and Herzegovina", "Cambodia", "Lebanon", "Timor-Leste", "Syrian Arab Republic")
+countries <- c("Republic of Korea", "Bosnia and Herzegovina", "Cambodia", "Lebanon", "Timor-Leste", "Syrian Arab Republic", "Switzerland", "Norway")
 
-datM %>%   
-  filter(name %in% countries) %>%
+datM |>   
+  filter(name %in% countries) |>
   ggplot(aes(x = year + 2.5, y = e0)) +
-  geom_point() +
+  geom_point(size = 0.25) +
   geom_line(alpha = 0.5) +
   facet_wrap(~name) +
-  pub_theme +
+  #pub_theme +
   labs(x = "Year", y = expression(e[0]))
 
 ggsave("plots/life_examples.pdf", height = 5, width = 10)
 
-fit <- lifeplus(
-  datM,
-  y = "e0", 
-  year = "year",
-  area = "name",
-  source = "source",
-  start_year = 1950,
-  end_year = 2100,
-  
-  model = "spline",
-  
-  spline_degree = 2,
-  num_knots = 7, 
-  hierarchical_splines = c("intercept", "name"),
-  
-  parallel_chains = 4,
-  iter_warmup = 500,
-  iter_sampling = 1e3,
-  
-  extra_stan_data = list(
-    scale_global = 1e-2,
-    slab_scale = 10,
-    slab_df = 6
-  )
-)
-
-print(fit$samples$cmdstan_diagnose())
-
 # What is the 2*SD(eps) threshold?
-threshold <- 2 * fit$samples$summary("epsilon_scale")$median
+threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 
 # How many of the observed differences fall below this threshold?
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
 fits <- expand_grid(
-  scale_global = c(1e-2),
-  model = c("spline", "shock2"),
-  num_knots = c(7)
-) %>%
-  mutate(fit = pmap(list(scale_global, model), function(scale_global, model) {
+  #scale_global = c(1e-3, 1e-2, 1e-1),
+  scale_global = 1e-2,
+  #model = c("shock2")
+  model = "logistic_shock",
+  outlier_threshold = 1e3
+) |>
+  bind_rows(
+    tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
+    tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
+  ) |>
+  mutate(fit = pmap(list(scale_global, model, outlier_threshold), function(scale_global, model, outlier_threshold) {
     lifeplus(
-      datM,
+      datM |> filter(name %in% c("Kenya", "Uganda")),
       y = "e0", 
       year = "year",
       area = "name",
@@ -127,10 +107,12 @@ fits <- expand_grid(
       start_year = 1950,
       end_year = 2100,
       
+      outlier_threshold = outlier_threshold,
+      
       model = model,
       
       spline_degree = 2,
-      num_knots = 7, 
+      num_knots = 8, 
       hierarchical_splines = c("intercept", "name"),
       
       normal_data_model = TRUE,
@@ -140,6 +122,7 @@ fits <- expand_grid(
       max_treedepth = 12,
       parallel_chains = 4,
       iter_warmup = 500,
+      #iter_sampling = 1e3,
       iter_sampling = 500,
       
       extra_stan_data = list(
@@ -153,6 +136,10 @@ fits <- expand_grid(
 #BayesTransitionModels:::plot_indicator(fits_with_shocks$fit[[1]], areas = "Somalia")
 #BayesTransitionModels:::plot_temporal("eta_crisisfree", fits_with_shocks$fit[[1]], areas = "Somalia")
 #BayesTransitionModels:::plot_temporal("shock", fits_with_shocks$fit[[1]], areas = "Cambodia")
+
+
+BayesTransitionModels::plot_indicator(fits$fit[[1]], areas = "Timor-Leste")
+
 #
 #name <- "Algeria"
 #BayesTransitionModels:::plot_temporal("eta", fit, name)
@@ -165,7 +152,7 @@ fits <- expand_grid(
 #
 
 validation_cutoff <- function(model, cutoff_year, scale_global, num_knots, normal_data_model, data_model_df) {
-  #datM <- datM %>%
+  #datM <- datM |>
   #  #filter(name %in% c("Sri Lanka", "Suriname", "Sweden", "Syrian Arrab Republic", "Thailand", "Trinidad and Tobago", "United Kingdom", "Bosnia and Herzegovina", "Brazil", "Cambodia", "Dem. People's Republic of Korea"))
   #  filter(name %in% c("Dem. People's Republic of Korea"))
   fit <- lifeplus(
@@ -175,7 +162,7 @@ validation_cutoff <- function(model, cutoff_year, scale_global, num_knots, norma
     area = "name",
     source = "source",
     start_year = 1950,
-    end_year = 2100,
+    end_year = max(datM$year),
     held_out = datM$year >= cutoff_year,
     
     normal_data_model = normal_data_model,
@@ -191,7 +178,7 @@ validation_cutoff <- function(model, cutoff_year, scale_global, num_knots, norma
     max_treedepth = 12,
     parallel_chains = 4,
     iter_warmup = 500,
-    iter_sampling = 500,
+    iter_sampling = 1000,
     
     extra_stan_data = list(
       scale_global = scale_global,
@@ -205,28 +192,30 @@ validation_cutoff <- function(model, cutoff_year, scale_global, num_knots, norma
 
 validations <- expand_grid(
   model = c("spline", "shock2"),
-  cutoff_year = c(2005, 2010, 2015),
+  #cutoff_year = c(2005, 2010, 2015),
+  cutoff_year = 2018,
+  #cutoff_year = 2010,
   #cutoff_year = 2005,
   scale_global = c(1e-2),
-  num_knots = c(7),
+  num_knots = c(6),
   #normal_data_model = c(FALSE, TRUE),
   data_model_df = c(3),
   normal_data_model = TRUE,
-) %>%
+) |>
   mutate(fit = pmap(list(model, cutoff_year, scale_global, num_knots, normal_data_model, data_model_df), validation_cutoff))
 
 
 validation_measures <- function(fit, cutoff_year) {
-  fit$data %>%
-    mutate(held_out = fit$held_out) %>%
-    filter(held_out == 1) %>%
-    group_by(name) %>%
-    filter(year == max(year)) %>%
-    #filter(year == cutoff_year) %>%
-    ungroup() %>%
-    left_join(fit$posteriors$temporal %>%
-      filter(variable %in% c("eta", "eta_crisisfree"))) %>%
-    group_by(variable) %>%
+  fit$data |>
+    mutate(held_out = fit$held_out) |>
+    filter(held_out == 1) |>
+    group_by(name) |>
+    filter(year == max(year)) |>
+    #filter(year == cutoff_year) |>
+    ungroup() |>
+    left_join(fit$posteriors$temporal |>
+      filter(variable %in% c("eta", "eta_crisisfree"))) |>
+    group_by(variable) |>
     mutate(below = e0 < `2.5%`,
            above = e0 > `97.5%`,
            covered = `2.5%` <= e0 & `97.5%` >= e0,
@@ -236,17 +225,18 @@ validation_measures <- function(fit, cutoff_year) {
            error = e0 - `50%`)
 }
 
-validation_results <-  validations %>%
-  filter(model != "shock") %>%
+validation_results <-  validations |>
+  filter(model != "shock") |>
   mutate(validation = map2(fit, cutoff_year, validation_measures))
 
-validation_results_summary <- validation_results %>%
+validation_results_summary <- validation_results |>
   mutate(validation = map(validation, function(validation) {
-    validation %>%
-      group_by(variable) %>%
+    validation |>
+      group_by(variable) |>
       summarize(n_below = sum(below),
                 below = mean(below),
               above = mean(above),
+              n = n(),
               coverage = mean(covered),
               ci_width = median(`97.5%` - `2.5%`),
               below0.1 = mean(below0.1),
@@ -256,25 +246,56 @@ validation_results_summary <- validation_results %>%
               median_error = median(error),
               mean_squared_error = mean(error^2),
               median_abs_error = median(abs(error)))
-  })) %>%
-  select(-fit) %>%
-  unnest(cols = c(validation)) %>%
+  })) |>
+  select(-fit) |>
+  unnest(cols = c(validation)) |>
   arrange(cutoff_year, model, scale_global)
 
-validation_table <- validation_results_summary %>%
-  #select(normal_data_model, data_model_df, scale_global, num_knots, cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) %>%
-  select(scale_global, num_knots, cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) %>%
-  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8, ci_width, ci_width0.8, median_error, median_abs_error), signif, 3) %>%
-  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), `*`, 100) %>%
-  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), paste0, "%") %>%
+
+locations <- distinct(UNlocations, name, area_name) |>
+  mutate(area_name = ifelse(area_name %in% c("Latin America and the Caribbean", "Northern America"),
+                            "Latin America, Northern America, Caribbean", area_name)) |>
+  mutate(area_name = ifelse(area_name %in% c("Asia", "Oceania"),
+                            "Asia & Oceania", area_name))
+
+validation_results_summary_by_area <- validation_results |>
+  mutate(validation = map(validation, function(validation) {
+    validation |>
+      left_join(locations, by = "name") |>
+      group_by(variable, area_name) |>
+      summarize(n_below = sum(below),
+                n_above = sum(above),
+                n = n(),
+                below = mean(below),
+                above = mean(above),
+                coverage = mean(covered),
+                ci_width = median(`97.5%` - `2.5%`),
+                below0.1 = mean(below0.1),
+                above0.9 = mean(above0.9),
+                coverage0.8 = mean(covered0.8),
+                ci_width0.8 = median(`90%` - `10%`),
+                median_error = median(error),
+                mean_squared_error = mean(error^2),
+                median_abs_error = median(abs(error)))
+  })) |>
+  select(-fit) |>
+  unnest(cols = c(validation)) |>
+  arrange(cutoff_year, model, scale_global)
+
+validation_table <- validation_results_summary |>
+  #select(normal_data_model, data_model_df, scale_global, num_knots, cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) |>
+  select(n, cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) |>
+  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8, ci_width, ci_width0.8, median_error, median_abs_error), signif, 3) |>
+  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), `*`, 100) |>
+  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), paste0, "%") |>
   mutate(model = case_when(
     model == "shock2" ~ "level shocks",
     model == "shock" ~ "rate shocks",
     model == "spline" ~ "no shocks"
-  )) %>%
-  mutate(cutoff_year = cutoff_year - 5,
-         cutoff_year = glue::glue("{cutoff_year}-{cutoff_year + 5}"),
-         index = 1:n()) %>%
+  )) |>
+  mutate(#cutoff_year = cutoff_year - 5,
+         #cutoff_year = glue::glue("{cutoff_year}-{cutoff_year + 5}"),
+         index = 1:n()) |>
   rename(Cutoff = cutoff_year,
          Model = model,
          `% Below` = below,
@@ -287,41 +308,88 @@ validation_table <- validation_results_summary %>%
          `CI Width (0.8)` = ci_width0.8,
          ME = median_error,
          MAE = median_abs_error
-         ) %>%
-  #mutate(Cutoff = ifelse(index %% 2 == 1, Cutoff, "")) %>%
+         ) |>
+  #mutate(Cutoff = ifelse(index %% 2 == 1, Cutoff, "")) |>
   select(-index)
 
-validation_table %>% View()
 
-validation_table %>%
-  mutate(variable = ifelse(variable == "eta", "crisis", "crisis-free")) %>%
-  select(-scale_global, -num_knots, -ME, -MAE) %>%
-  #select(scale_global, Cutoff, variable, Model, ME, MAE) %>%
+validation_table_by_area <- validation_results_summary_by_area |>
+  #select(normal_data_model, data_model_df, scale_global, num_knots, cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) |>
+  select(area_name, n, scale_global, num_knots, cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) |>
+  mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), scales::percent_format(accuracy = 0.1)) |>
+  mutate_at(vars(ci_width, median_error, median_abs_error, ci_width0.8), scales::number_format(accuracy = 0.01)) |>
+  #mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8, ci_width, ci_width0.8, median_error, median_abs_error), signif, 3) |>
+  #mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), `*`, 100) |>
+  #mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), paste0, "%") |>
+  mutate(model = case_when(
+    model == "shock2" ~ "level shocks",
+    model == "shock" ~ "rate shocks",
+    model == "spline" ~ "no shocks"
+  )) |>
+  mutate(#cutoff_year = cutoff_year - 5,
+         #cutoff_year = glue::glue("{cutoff_year}-{cutoff_year + 5}"),
+         index = 1:n()) |>
+  rename(Cutoff = cutoff_year,
+         Model = model,
+         `% Below` = below,
+         `% Included` = coverage,
+         `% Above` = above,
+         `CI Width` = ci_width,
+         `% Below (0.8)` = below0.1,
+         `% Included (0.8)` = coverage0.8,
+         `% Above (0.8)` = above0.9,
+         `CI Width (0.8)` = ci_width0.8,
+         ME = median_error,
+         MAE = median_abs_error
+  ) |>
+  #mutate(Cutoff = ifelse(index %% 2 == 1, Cutoff, "")) |>
+  select(-index)
+
+
+remove_dups <- function(x) {
+  x[x == lag(x)] <- ""
+  x
+}
+
+validation_table_by_area |>
+  #filter(Cutoff == "2005-2010", variable == "eta") |>
+  filter(variable == "eta") |>
+  ungroup() |>
+  mutate(area_name = ifelse(area_name == "Latin America, Northern America, Caribbean", "Americas", area_name)) |>
+  mutate(variable = ifelse(variable == "eta", "crisis", "crisis-free")) |>
+  arrange(variable, Model, area_name) |>
+  select(Model, area_name, n, ME, MAE, `% Below (0.8)`, `% Included (0.8)`, `% Above (0.8)`, `CI Width (0.8)`) |>
+  #select(Model, variable, area_name, n, Cutoff,  `% Below`, `% Included`, `% Above`, `CI Width`) |>
+  #select(scale_global, Cutoff, variable, Model, ME, MAE) |>
+  arrange(Model, area_name) |>
+  mutate_at(vars(area_name, Model, n), remove_dups) |>
   knitr::kable(format = "latex") 
 
-validation_table %>%
-  mutate(variable = ifelse(variable == "eta", "crisis", "crisis-free")) %>%
-  select(Cutoff, variable, Model, ME, MAE) %>%
-  #select(scale_global, Cutoff, variable, Model, ME, MAE) %>%
+validation_table_by_area |>
+  ungroup() |>
+  mutate(variable = ifelse(variable == "eta", "crisis", "crisis-free")) |>
+  select(variable, Model, area_name, n, Cutoff, ME, MAE) |>
+  arrange(Model, variable, area_name, n, Cutoff) |>
+  mutate_at(vars(area_name, n, Cutoff), remove_dups) |>
+  #select(scale_global, Cutoff, variable, Model, ME, MAE) |>
+  mutate_at(vars(area_name, n, Cutoff, Model, variable), remove_dups) |>
   knitr::kable(format = "latex") 
 
 
 plot_life_transition <- function(fit) {
-  fit$posteriors$transition_function_mean %>% 
+  fit$posteriors$transition_function_mean |> 
     ggplot(aes(x = x, y = transition_function_mean)) +
     geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
     geom_line() +
     scale_fill_brewer()
 }
 
-validations$fit[[2]]$posteriors$transition_function_mean %>%
-  mutate(model = "Shock") %>%
-  bind_rows(validations$fit[[1]]$posteriors$transition_function_mean %>%
-              mutate(model = "No shocks")) %>%
+validations$fit[[4]]$posteriors$transition_function_mean |>
+  mutate(model = "Shock") |>
+  bind_rows(validations$fit[[1]]$posteriors$transition_function_mean |>
+              mutate(model = "No shocks")) |>
   ggplot(aes(x = x, y = transition_function_mean, color = model)) +
   geom_line()
-
-validations$fit[[1]] %>% plot_indicator("Suriname")
 
 plot_life_transition(validations$fit[[1]]) + ylim(c(0, 10))
 plot_life_transition(validations$fit[[3]]) + ylim(c(0, 10))
@@ -332,7 +400,7 @@ plot_life_transition(validations$fit[[4]]) +
 bind_rows(
   mutate(validations$fit[[1]]$posteriors$transition_function_mean, model = "No shocks"),
   mutate(validations$fit[[3]]$posteriors$transition_function_mean, model = "Shocks")
-) %>%
+) |>
   ggplot(aes(x = x, y = transition_function_mean, color = model)) +
   #geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
   geom_line() +
@@ -341,32 +409,32 @@ bind_rows(
 all_fs <- bind_rows(
   mutate(validations$fit[[1]]$posteriors$transition_functions, model = "No shocks"),
   mutate(validations$fit[[3]]$posteriors$transition_functions, model = "Shocks")
-) %>%
+) |>
   filter(.width == 0.95)
 
-all_fs %>%
+all_fs |>
   ggplot(aes(x = 15 + x * (85 - 15), y = transition_function_pred, group = name)) +
   geom_line() +
   facet_wrap(~model)
 
-all_fs %>%
+all_fs |>
   ggplot(aes(x = 15 + x * (85 - 15), y = transition_function_pred, group = name)) +
   geom_line(aes(y = .upper)) +
   facet_wrap(~model)
 
-all_fs %>%
+all_fs |>
   ggplot(aes(x = 15 + x * (85 - 15), y = transition_function_pred, group = name)) +
   geom_line(aes(y = .lower)) +
   facet_wrap(~model)
 
 
-country <- ""
+country <- "Belarus"
 bind_rows(
   mutate(validations$fit[[1]]$posteriors$transition_functions, model = "No shocks"),
   mutate(validations$fit[[4]]$posteriors$transition_functions, model = "With shocks")
-) %>%
-  filter(name == country, .width == 0.95) %>%
-  ggplot(aes(x = 15 + x * (85 - 15), y = transition_function_pred, color = model)) +
+) |>
+  filter(name == country, .width == 0.95) |>
+  ggplot(aes(x = 15 + x * (110 - 15), y = transition_function_pred, color = model)) +
   #geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
   geom_point(data = filter(datM_diffs, name == country, year <= 2000), aes(x = e0, y = diff), color = "black") +
   geom_line() +
@@ -375,17 +443,17 @@ bind_rows(
   #geom_vline(xintercept = c(45, 50, 55, 60, 65, 70), lty = 2) +
   scale_fill_brewer()
 
-pit <- validations$fit[[1]]$samples$draws("pit") %>%
+pit <- validations$fit[[1]]$samples$draws("pit") |>
   spread_draws(pit[n])
 
-gamma <- validations$fit[[1]]$samples$draws("gamma") %>%
-  spread_draws(gamma[c, t]) %>%
-  left_join(validations$fit[[1]]$country_index) %>%
-  left_join(validations$fit[[1]]$time_index) %>%
-  group_by(year, name, c, t) %>%
+gamma <- validations$fit[[1]]$samples$draws("gamma") |>
+  spread_draws(gamma[c, t]) |>
+  left_join(validations$fit[[1]]$country_index) |>
+  left_join(validations$fit[[1]]$time_index) |>
+  group_by(year, name, c, t) |>
   median_qi()
 
-gamma %>%
+gamma |>
   ggplot(aes(x = year, y = gamma)) +
   geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
   scale_fill_brewer() +
@@ -395,75 +463,76 @@ countries <- sort(validations$fit[[1]]$country_index$name)
 
 plot_comparison <- function(fit1, fit2, name1, name2, country) {
   bind_rows(
-    fit1$posteriors$temporal %>%
-      filter(variable == "eta") %>%
-      filter(name == country) %>%
-      mutate(model = name1) %>%
-      mutate_at(vars(`2.5%`, `50%`, `97.5%`), as.numeric) %>%
-      select(year, model, `2.5%`, `50%`, `97.5%`),
-    fit2$posteriors$temporal %>%
-      filter(name == country) %>%
-      filter(variable == "eta") %>%
-      mutate(model = name2) %>%
-      mutate_at(vars(`2.5%`, `50%`, `97.5%`), as.numeric) %>%
-      select(year, model, `2.5%`, `50%`, `97.5%`),
-  ) %>%
+    fit1$posteriors$temporal |>
+      filter(variable == "eta") |>
+      filter(name == country) |>
+      mutate(model = name1) |>
+      mutate_at(vars(`10%`, `50%`, `90%`), as.numeric) |>
+      select(year, model, `10%`, `50%`, `90%`),
+    fit2$posteriors$temporal |>
+      filter(name == country) |>
+      filter(variable == "eta") |>
+      mutate(model = name2) |>
+      mutate_at(vars(`10%`, `50%`, `90%`), as.numeric) |>
+      select(year, model, `10%`, `50%`, `90%`),
+  ) |>
     ggplot(aes(x = year, y = `50%`, color = model)) +
-    geom_line(aes(y = `2.5%`), lty = 2) +
-    geom_line(aes(y = `97.5%`), lty = 2) +
+    geom_line(aes(y = `10%`), lty = 2) +
+    geom_line(aes(y = `90%`), lty = 2) +
     geom_line() +
-    geom_point(aes(x = year, y = e0), color = "black", data = filter(fit1$data, name == country))
+    geom_point(aes(x = year, y = e0), color = "black", data = filter(fit1$data, name == country)) +
+    scale_x_continuous(name = "Year") +
+    scale_y_continuous(name = expression(e[0])) +
+    pub_theme
 }
 
-country <- "Myanmar"
-pdf("plots/shocks_no_shocks_comparison.pdf", width = 6, height = 5)
+pdf("plots/shocks_no_shocks_comparison.pdf", width = 5, height = 4)
 for(country in countries) {
   print(country)
-  p1 <- plot_comparison(validations$fit[[4]], validations$fit[[1]], "Shocks", "No shocks", country = country) + ggtitle("Cutoff = 2005")# + theme(legend.position = "none")
-  #p2 <- plot_comparison(validations$fit[[2]], validations$fit[[5]], "Shocks", "No shocks", country = country) + ggtitle("Cutoff = 2010") + theme(legend.position = "none")
-  #p3 <- plot_comparison(validations$fit[[3]], validations$fit[[6]], "Shocks", "No shocks", country = country) + ggtitle("Cutoff = 2015")
+  #p1 <- plot_comparison(validations$fit[[1]], validations$fit[[4]], "No shocks", "Shocks", country = country) + ggtitle("Cutoff = 2005") + theme(legend.position = "none")
+  p2 <- plot_comparison(validations$fit[[2]], validations$fit[[5]], "No shocks", "Shocks", country = country)
+  #p3 <- plot_comparison(validations$fit[[3]], validations$fit[[6]], "No shocks", "Shocks", country = country) + ggtitle("Cutoff = 2015")
   #p <- (p1 + p2 + p3) & plot_annotation(title = country)
-  p <- p1 + plot_annotation(title = country)
+  p <- p2 + plot_annotation(title = country)
   print(p)
 }
 dev.off()
 
+shock <- validations$fit[[4]]$samples |> spread_draws(shock[c, t]) |> group_by(c, t) |> median_qi(.width = c(0.8, 0.9, 0.95))
 
-shock <- validations$fit[[4]]$samples %>% spread_draws(shock[c, t]) %>% group_by(c, t) %>% median_qi(.width = c(0.8, 0.9, 0.95))
-
-shock %>%
-  filter(.width == 0.95) %>%
-  left_join(validations$fit[[3]]$country_index) %>%
-  left_join(validations$fit[[3]]$time_index) %>%
+shock |>
+  filter(.width == 0.95) |>
+  left_join(validations$fit[[3]]$country_index) |>
+  left_join(validations$fit[[3]]$time_index) |>
   arrange(shock)
 
-shock %>%
-  left_join(validations$fit[[4]]$country_index) %>%
-  left_join(validations$fit[[4]]$time_index) %>%
-  filter(name == country) %>%
+shock |>
+  left_join(validations$fit[[4]]$country_index) |>
+  left_join(validations$fit[[4]]$time_index) |>
+  filter(name == country) |>
   ggplot(aes(x = year, y = shock)) + 
   geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
   scale_fill_brewer()
 
-validation_results[c(1,2),] %>%
-  unnest(validation) %>%
-  group_by(model, name) %>% 
-  filter(year == max(year), variable == "eta") %>%
-  filter(covered == FALSE) %>%
+validation_results[c(1,2),] |>
+  unnest(validation) |>
+  group_by(model, name) |> 
+  filter(year == max(year), variable == "eta") |>
+  filter(covered == FALSE) |>
   pull(name)
 
-validation_results[c(1,2),] %>%
-  unnest(validation) %>%
-  group_by(model, name) %>% 
-  filter(year == max(year), variable == "eta", model == "shock2") %>%
-  arrange(error) %>%
+validation_results[c(1,4),] |>
+  unnest(validation) |>
+  group_by(model, name) |> 
+  filter(year == max(year), variable == "eta", model == "shock2") |>
+  arrange(error) |>
   select(name, model, error)
 
-validation_results[c(1,4),] %>%
-  unnest(validation) %>%
-  group_by(model, name) %>% 
-  filter(year == max(year), variable == "eta") %>%
-  select(model, name, `50%`) %>%
-  pivot_wider(names_from = "model", values_from = "50%") %>%
-  mutate(diff = spline - shock2) %>% 
+validation_results[c(1,4),] |>
+  unnest(validation) |>
+  group_by(model, name) |> 
+  filter(year == max(year), variable == "eta") |>
+  select(model, name, `50%`) |>
+  pivot_wider(names_from = "model", values_from = "50%") |>
+  mutate(diff = spline - shock2) |> 
   arrange(-diff)

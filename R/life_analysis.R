@@ -1,6 +1,5 @@
 library(tidyverse)
 library(wpp2024)
-library(BayesTransitionModels)
 library(tidybayes)
 library(bayesLife)
 library(patchwork)

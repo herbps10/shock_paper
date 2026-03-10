@@ -174,7 +174,7 @@ lifeplus <- function(
   #a_data       <- BayesTransitionModels:::hierarchical_data(country_index, hierarchical_splines)
   
   # Set up spline basis
-< #knots <- sort(c(seq(0, (max(data[[y]]) - 15) / (110 - 15), length.out = num_knots), 1, 2))
+  #knots <- sort(c(seq(0, (max(data[[y]]) - 15) / (110 - 15), length.out = num_knots), 1, 2))
   #knots <- c((c(15, 30, 45, 50, 55, 60, 65, 70, 75, 80, 85) - 15) / (85 - 15), 1000)
   if(model == "logistic" || model == "logistic_shock") {
     grid <- c(seq(from = 0, to = 110, by = 5)) # generating inputs

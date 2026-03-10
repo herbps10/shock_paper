@@ -38,14 +38,14 @@ process_life_fit <- function(fit, parallel_chains = NULL) {
   #
   # Hierarchical distributions
   #
-  a_sigma <- fit$samples$draws(c("a_sigma")) %>%
-    tidybayes::spread_draws(a_sigma[i])
+  #a_sigma <- fit$samples$draws(c("a_sigma")) %>%
+  #  tidybayes::spread_draws(a_sigma[i])
   
   ans <- list(
     temporal = temporal,
     transition_functions = transition_functions,
-    transition_function_mean = transition_function_mean,
-    a_sigma = a_sigma
+    transition_function_mean = transition_function_mean
+    #a_sigma = a_sigma
   )
   
   ans

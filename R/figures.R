@@ -1,7 +1,7 @@
-epsilon_scale <- tidybayes::spread_draws(fit$samples$draws("epsilon_scale"), epsilon_scale) %>%
+epsilon_scale <- tidybayes::spread_draws(fit_noshock$samples$draws("epsilon_scale"), epsilon_scale) %>%
   mutate(model = "No shocks") %>%
   bind_rows(
-    tidybayes::spread_draws(fits$fit[[1]]$samples$draws("epsilon_scale"), epsilon_scale) %>%
+    tidybayes::spread_draws(fit_shock$samples$draws("epsilon_scale"), epsilon_scale) %>%
       mutate(model = "Shocks")
   )
   
@@ -14,24 +14,28 @@ epsilon_scale %>%
 #
 # Long-term projections
 #
-ci_width_comparison <- fit$posteriors$temporal %>%
-  filter(variable == "eta", year == 2095) %>%
-  mutate(ci_width_no_shocks = `97.5%` - `2.5%`) %>%
+
+fit_shock <- fits$fit[[1]]
+fit_noshock <- fits$fit[[2]]
+
+ci_width_comparison <- fit_noshock$posteriors$temporal %>%
+  filter(variable == "eta", year == 2100) %>%
+  mutate(ci_width_no_shocks = `90%` - `10%`) %>%
   select(name, year, ci_width_no_shocks) %>%
   left_join(
-    fits$fit[[1]]$posteriors$temporal %>%
-      filter(variable == "eta", year == 2095) %>%
-      mutate(ci_width_shocks = `97.5%` - `2.5%`) %>%
+    fit_shock$posteriors$temporal %>%
+      filter(variable == "eta", year == 2100) %>%
+      mutate(ci_width_shocks = `90%` - `10%`) %>%
       select(name, year, ci_width_shocks)    
   )
 
-projection_comparison <- fit$posteriors$temporal %>%
-  filter(year == 2095) %>%
+projection_comparison <- fit_noshock$posteriors$temporal %>%
+  filter(year == 2100, variable == "eta") %>%
   mutate(median_no_shocks = `50%`) %>%
   select(name, year, median_no_shocks) %>%
   left_join(
-    fits$fit[[1]]$posteriors$temporal %>%
-      filter(year == 2095, variable == "eta") %>%
+    fit_shock$posteriors$temporal %>%
+      filter(year == 2100, variable == "eta") %>%
       mutate(median_shocks = `50%`) %>%
       select(name, year, median_shocks)
   )
@@ -60,54 +64,53 @@ p2 <- ci_width_comparison %>%
   pub_theme +
   labs(x = "no shocks",
        y = "shocks",
-       subtitle = "95% credible interval width")
+       subtitle = "80% credible interval width")
 
-(p1 + p2) + plot_annotation("Male period life expectancy by country, 2095-2100", tag_levels = "A")
+(p1 + p2) + plot_annotation("Male period life expectancy by country, 2100", tag_levels = "A")
 ggsave("plots/life_projection_comparison.pdf", height = 4, width = 10)
 
 #
 # Fit comparisons
 #
-eta <- fit$posteriors$temporal %>%
+eta <- fit_noshock$posteriors$temporal %>%
   filter(variable == "eta") %>%
   mutate(model = "No shocks") %>%
   bind_rows(
-    fits$fit[[2]]$posteriors$temporal %>%
+    fit_shock$posteriors$temporal %>%
       filter(variable == "eta") %>%
       mutate(model = "Shocks") 
   )
 
 countries <- projection_comparison %>% 
-  mutate(abs_diff = abs(median_no_shocks - median_shocks)) %>%
-  arrange(abs_diff) %>%
-  pull(name)
+  mutate(abs_diff = abs(median_no_shocks - median_shocks), diff = median_no_shocks - median_shocks) %>%
+  arrange(abs_diff)
 
 # Pick top and bottom 3
-countries <- c(countries[1:4], countries[(length(countries) - 3):length(countries)])
+#arranged_countries <- c(countries$name[1:4], arrange(countries, diff)$name[1:4], arrange(countries, -diff)$name[1:4])
+arranged_countries <- c(arrange(countries, abs_diff)$name[1:4], arrange(countries, -abs_diff)$name[1:4])
 
 eta %>%
-  filter(name %in% countries) %>%
-  mutate(name = factor(name, levels = countries)) %>%
+  filter(name %in% arranged_countries) %>%
+  mutate(name = factor(name, levels = arranged_countries)) %>%
   ggplot(aes(x = year + 2.5, y = `50%`)) +
   geom_ribbon(aes(ymin = `2.5%`, ymax = `97.5%`, fill = model), color = "transparent", alpha = 0.2) +
   geom_line(aes(color = model)) + 
-  geom_point(data = fit$data %>% filter(name %in% countries) %>% mutate(name = factor(name, levels = countries)), aes(y = e0), alpha = 0.5) +
-  facet_wrap(~name, nrow = 2) +
-  labs(x = "Year", y = expression(e[0]))
+  geom_point(data = fit_shock$data %>% filter(name %in% arranged_countries) %>% mutate(name = factor(name, levels = arranged_countries)), aes(y = e0), alpha = 0.5) +
+  facet_wrap(~name, nrow = 2, scales = "free_y") +
+  labs(x = "Year", y = expression(e[0])) +
+  pub_theme +
+  theme(legend.position = "bottom")
 
-ggsave("plots/life_fit_examples.pdf", width = 10, height = 5)
+ggsave("plots/life_fit_examples.pdf", width = 10, height = 4)
 
 #
 # Compare transition functions
 #
 
-plot_mean_transition(fits$fit[[1]])
-plot_mean_transition(fits$fit[[3]])
-
-p1 <- plot_mean_transition(fit) + ylim(c(0, 10)) + labs(x = expression(e0), y = expression(f[b])) +
+p1 <- plot_mean_transition(fit_noshock) + ylim(c(0, 11)) + labs(x = expression(e0), y = expression(f[b])) +
   theme(legend.position = "none") +
   ggtitle(label = "No shocks")
-p2 <- plot_mean_transition(fits$fit[[2]]) + ylim(c(0, 7)) + labs(x = expression(e0), y = expression(f[b])) +
+p2 <- plot_mean_transition(fit_shock) + ylim(c(0, 11)) + labs(x = expression(e0), y = expression(f[b])) +
   theme(legend.position = "none") +
   ggtitle(label = "Shocks")
 
@@ -115,11 +118,19 @@ p1 / p2
 
 ggsave("plots/transition_function_comparisons.pdf", width = 8, height = 5)
 
+fit_noshock$posteriors$transition_function_mean %>% mutate(model = "No shock") %>%
+  bind_rows(fit_shock$posteriors$transition_function_mean %>% mutate(model = "Shock")) %>%
+  ggplot(aes(x = 15 + (x * (110 - 15)), y = transition_function_mean)) +
+  geom_point(data = datM_diffs, aes(x = e0, y = diff), size = 0.1) +
+  geom_line(aes(color = model)) +
+  geom_smooth(se = FALSE)
+  
+
 #
 # Prior/posterior plots
 #
 
-stan_data <- fits$fit[[1]]$stan_data
+stan_data <- fit_shock$stan_data
 
 # Prior on c
 caux <- fits %>%
@@ -136,6 +147,7 @@ caux %>%
 
 # Prior on tau0
 global_shrinkage <- fits %>%
+  filter(model == "shock2") %>%
   mutate(global_shrinkage = map(fit, function(fit) {
     spread_draws(fit$samples$draws("global_shrinkage"), global_shrinkage)
   })) %>%
@@ -164,32 +176,31 @@ largest_shocks <- function(fit) {
     filter(abs(`97.5%`) > threshold_shocks)
 }
 
-largest_shocks(fits$fit[[1]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
-largest_shocks(fits$fit[[2]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
-largest_shocks(fits$fit[[3]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
+largest_shocks(fit_shock) %>% select(name, year, `2.5%`, `50%`, `97.5%`)
 
-countries <- largest_shocks(fits$fit[[2]]) %>% select(name, year, `2.5%`, `50%`, `97.5%`) %>% pull(name) %>% unique()
+countries <- largest_shocks(fit_shock) %>% select(name, year, `2.5%`, `50%`, `97.5%`) %>% pull(name) %>% unique()
 
-plot_shock_corrected(fits$fit[[2]], countries[1:6])
-ggsave("plots/largest_shocks.pdf", width = 8, height = 4)
+plot_shock_corrected(fit_shock, countries[1:6]) +
+  theme(legend.position = "bottom")
+ggsave("plots/largest_shocks.pdf", width = 8.5, height = 4)
 
-plot_shock_corrected(fits$fit[[2]], countries)
+plot_shock_corrected(fit_shock, countries)
 ggsave("plots/all_largest_shocks.pdf", width = 10, height = 8)
 
 #
 # Plot all
 #
 
-countries <- sort(unique(fit$data$name))
+countries <- sort(unique(fit_shock$data$name))
 
-pdf("plots/life_all_countries.pdf", width = 10, height = 4)
+pdf("plots/life_all_countries_yearly.pdf", width = 10, height = 4)
 for(country in countries) {
   print(country)
-  p1 <- plot_indicator(fit, country) +
+  p1 <- plot_indicator(fit_noshock, country) +
     pub_theme +
     labs(x = "Year", y = expression(e[0]), subtitle = "no shocks")
   
-  p2 <- plot_indicator(fit2, country) +
+  p2 <- plot_indicator(fit_shock, country) +
     pub_theme +
     labs(x = "Year", y = expression(e[0]), subtitle = expression(shocks~(tau[0]==0.01)))
   

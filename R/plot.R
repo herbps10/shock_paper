@@ -11,7 +11,7 @@ plot_comparison <- function(fit, country) {
 }
 
 
-plot_shock <- function(fit, areas = c()) {
+plot_shock <- function(fit, areas = fit$country_index$name) {
   fit$posteriors$temporal %>%
     filter(variable == "shock", name %in% areas) %>%
     ggplot(aes(x = year, y = `50%`)) +
@@ -74,7 +74,7 @@ plot_with_shocks <- function(fit, area) {
   p1 / p2 + plot_layout(heights = c(5, 2))
 }
 
-plot_shock_corrected <- function(fit, areas) {
+plot_shock_corrected <- function(fit, areas = fit$country_index$name) {
   threshold <- 2 * fit$samples$summary("epsilon_scale")$median
   fit$data %>% 
     filter(name %in% areas) %>%
@@ -82,13 +82,14 @@ plot_shock_corrected <- function(fit, areas) {
       fit$posteriors$temporal %>% 
       filter(variable == "shock", name %in% areas, `97.5%` < -threshold)) %>% 
     ggplot(aes(x = year, y = e0)) + 
-    geom_point(aes(shape = "Observations", color = "Observations")) + 
-    geom_point(aes(shape = "Shock-corrected", y = e0 - `50%`, color = "Shock-corrected")) +
+    geom_point(aes(shape = "Observations", color = "Observations"), size = 0.5) + 
+    geom_point(aes(shape = "Shock-corrected", y = e0 - `50%`, color = "Shock-corrected"), size = 0.5) +
     geom_segment(aes(x = year, xend = year, y = e0, yend = e0 - `50%`), lty = 3, alpha = 0.5) +
     geom_errorbar(aes(color = "Shock-corrected", ymin = e0 - `97.5%`, ymax = e0 - `2.5%`, width = 0)) +
     scale_color_manual(values = c("black", "blue")) +
     guides(shape = FALSE) +
     facet_wrap(~name) +
-    labs(color = "", x = "Year", y = expression(e[0]))
+    labs(color = "", x = "Year", y = expression(e[0])) +
+    pub_theme
 }
 

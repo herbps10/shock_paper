@@ -55,16 +55,21 @@ transformed data {
   }
 
   real P_tilde = 15;
-  real P_tilde2 = 85;
+  real P_tilde2 = 110;
   
   int hierarchical = 1;
+  
+  //real epsilon_scale = 1.99;
 }
 
 parameters {
   // Spline rate vs. level function
-  vector[hierarchical * (num_basis - 2)] a_mu;
-  vector<lower=0>[hierarchical * (num_basis - 2)] a_sigma;
-  matrix[C, num_basis - 2] a_raw;
+  //vector[hierarchical * (num_basis - 2)] a_mu;
+  vector[hierarchical * (num_basis)] a_mu;
+  //vector<lower=0>[hierarchical * (num_basis - 2)] a_sigma;
+  vector<lower=0>[hierarchical * (num_basis)] a_sigma;
+  //matrix[C, num_basis - 2] a_raw;
+  matrix[C, num_basis] a_raw;
 
   //vector[C] Omega_raw;
   //real P_tilde2_mu;
@@ -88,14 +93,19 @@ transformed parameters {
     }
   }
   if(hierarchical == 1) {
-    a[, num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2] + a_raw[,num_basis - 2] * a_sigma[num_basis - 2]);
+    a[, num_basis - 2] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_mu[num_basis - 2] + a_raw[,num_basis - 2] * a_sigma[num_basis - 2]);
+    a[, num_basis - 1] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_mu[num_basis - 1] + a_raw[,num_basis - 1] * a_sigma[num_basis - 1]);
+    a[, num_basis]     = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_mu[num_basis]     + a_raw[,num_basis] * a_sigma[num_basis]);
   }
   else {
-    a[, num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_raw[,num_basis - 2]);
+    a[, num_basis - 2] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_raw[,num_basis - 2]);
+    a[, num_basis - 1] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_raw[,num_basis - 1]);
+    a[, num_basis]     = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_raw[,num_basis]);
   }
 
   for(c in 1:C) {
-    a[c, (num_basis - 1):num_basis] = rep_row_vector(a[c, num_basis - 2], 2);
+    //a[c, (num_basis - 1):num_basis] = rep_row_vector(a[c, num_basis - 2], 2);
+    //a[c, (num_basis):num_basis] = rep_row_vector(a[c, num_basis - 1], 1);
     for(t in 2:t_last) {
       transition_function[c, t] = rate_spline(ymat[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
     }
@@ -140,8 +150,10 @@ generated quantities {
     // mean transition function based on a_mu, consider mean of country functions as well
     vector[num_basis] a_mean;
     a_mean[1:(num_basis - 3)] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[1:(num_basis - 3)]);
-    a_mean[num_basis - 2] = a_lower_bound + (1.15 - a_lower_bound) * inv_logit(a_mu[num_basis - 2]);
-    a_mean[(num_basis - 1):num_basis] = rep_vector(a_mean[num_basis - 2], 2);
+    a_mean[num_basis - 2] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_mu[num_basis - 2]);
+    a_mean[num_basis - 1] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_mu[num_basis - 1]);
+    a_mean[num_basis] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_mu[num_basis]);
+    //a_mean[(num_basis - 1):num_basis] = rep_vector(a_mean[num_basis - 2], 2);
 
     for(i in 1:num_grid) {
       transition_function_mean[i] = rate_spline(grid[i], 0, 1, to_row_vector(a_mean), ext_knots, num_basis, spline_degree);

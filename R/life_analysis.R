@@ -11,7 +11,7 @@ source("R/process_lifeplus.R")
 data(UNlocations, package = "wpp2024")
 data(e0M1, package = "wpp2024")
 data(pop1, package = "wpp2024")
-data(include_2010, package = "bayesTFR")
+data(include_2010, package = "bayesLife")
 
 
 # Number of countries before filtering
@@ -22,13 +22,12 @@ e0M1 |>
 
 included_codes <- include_2010 |> filter(include_code %in% 1:2) |> pull(country_code)
 
-large_countries <- pop1 |>
-  filter(`2020` >= 1e3) |>
-  #filter(`2020` >= 1e4) |>
-  pull(name)
+large_countries <- pop1 |> 
+  filter(`2023` >= 1e3) |>
+  pull(country_code)
 
 datM <- e0M1 |>
-  filter(name %in% large_countries) |>
+  filter(country_code %in% large_countries) |>
   pivot_longer(cols = `1950`:`2023`, names_to = "period", values_to = "e0") |>
   filter(country_code %in% included_codes) |>
   mutate(year = parse_integer(str_sub(period, 1, 4)),
@@ -85,6 +84,8 @@ threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 # How many of the observed differences fall below this threshold?
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
+random_countries <- sample(unique(datM$name), 25)
+
 fits <- expand_grid(
   #scale_global = c(1e-3, 1e-2, 1e-1),
   scale_global = 1e-2,
@@ -92,13 +93,13 @@ fits <- expand_grid(
   model = "logistic_shock",
   outlier_threshold = 1e3
 ) |>
-  bind_rows(
-    tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
-    tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
-  ) |>
+  #bind_rows(
+  #  tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
+  #  tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
+  #) |>
   mutate(fit = pmap(list(scale_global, model, outlier_threshold), function(scale_global, model, outlier_threshold) {
     lifeplus(
-      datM |> filter(name %in% c("Kenya", "Uganda")),
+      datM |> filter(name %in% random_countries),
       y = "e0", 
       year = "year",
       area = "name",
@@ -117,7 +118,7 @@ fits <- expand_grid(
       normal_data_model = TRUE,
       data_model_df = 5,
       
-      adapt_delta = 0.99,
+      adapt_delta = 0.95,
       max_treedepth = 12,
       parallel_chains = 4,
       iter_warmup = 500,
@@ -535,3 +536,20 @@ validation_results[c(1,4),] |>
   pivot_wider(names_from = "model", values_from = "50%") |>
   mutate(diff = spline - shock2) |> 
   arrange(-diff)
+
+tidybayes::spread_draws(fits$fit[[1]]$samples, Delta4[c]) |> 
+  median_qi(.width =c(0.5, 0.9, 0.95)) |> 
+  left_join(fits$fit[[1]]$country_index) |> 
+  ggplot(aes(x = Delta4, y = reorder(name, Delta4))) + 
+  tidybayes::geom_interval(aes(xmin = .lower, xmax = .upper)) + 
+  geom_point() + 
+  scale_color_brewer()
+
+bayesplot::mcmc_dens(fits$fit[[1]]$samples$draws(c("sigma_Delta1", "sigma_Delta2", "sigma_Delta3", "sigma_Delta4", "sigma_z", "sigma_k", "epsilon_scale")))
+bayesplot::mcmc_dens(fits$fit[[1]]$samples$draws(c("mu_Delta1", "mu_Delta2", "mu_Delta3", "mu_Delta4", "mu_z", "mu_k", "epsilon_scale")))
+
+tidybayes::spread_draws(fits$fit[[1]]$samples, Delta1[c]) |>
+  group_by(.chain, .iteration, .draw) |>
+  summarize(sd = sd(Delta1)) |>
+  ungroup() |>
+  ggplot(aes(x = sd)) + geom_density()

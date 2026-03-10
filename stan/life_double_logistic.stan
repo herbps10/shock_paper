@@ -4,6 +4,10 @@ functions {
     real A2 = 0.5;
     return k / (1 + exp(-A1 / Delta2 * (x - Delta1 - A2 * Delta2))) + (z - k) / (1 + exp(-A1 / Delta4 * (x - Delta1 - Delta2 - Delta3 - A2 * Delta4)));
   }
+  
+  real inv_logit_adjustment(real x) {
+    return x - 2 * log(exp(x) + 1);
+  }
 }
 
 data {
@@ -12,7 +16,7 @@ data {
   int C; // Number of countries
   int t_last;
   
-  vector[N] y;                         // Observations
+  vector[N] y;                             // Observations
   array[N] int<lower=1, upper=T> time;     // Time of each observation
   array[N] int<lower=1, upper=C> country;  // Country of each observation
   array[N] int<lower=0, upper=1> held_out;
@@ -37,34 +41,40 @@ transformed data {
 }
 
 parameters {
-  real<lower=0> epsilon_scale;
+  real<lower=0.5,upper=1> epsilon_scale;
   
-  vector<lower=0, upper=100>[C] Delta1;
-  vector<lower=0, upper=100>[C] Delta2;
-  vector<lower=0, upper=100>[C] Delta3;
-  vector<lower=10, upper=100>[C] Delta4;
-  vector<lower=0, upper=10>[C] k;
-  vector<lower=0, upper=1.15>[C] z;
+  vector<lower=-5, upper=5>[C] raw_Delta1;
+  vector<lower=-5, upper=5>[C] raw_Delta2;
+  vector<lower=-5, upper=5>[C] raw_Delta3;
+  vector<lower=-5, upper=5>[C] raw_Delta4;
+  vector<lower=-5, upper=5>[C] raw_k;
+  vector<lower=-5, upper=5>[C] raw_z;
   
-  real <lower=0, upper=100> mu_Delta1;
-  real <lower=0, upper=100> mu_Delta2;
-  real <lower=0, upper=100> mu_Delta3;
-  real <lower=10, upper=100> mu_Delta4;
-  real <lower=0, upper=10> mu_k;
-  real <lower=0, upper=1.15> mu_z;
+  real<lower=-5, upper=5> mu_Delta1;
+  real<lower=-5, upper=5> mu_Delta2;
+  real<lower=-5, upper=5> mu_Delta3;
+  real<lower=-5, upper=5> mu_Delta4;
+  real<lower=-5, upper=5> mu_k;
+  real<lower=-5, upper=5> mu_z;
   
-  real<lower=0, upper=100> sigma_Delta1;
-  real<lower=0, upper=100> sigma_Delta2;
-  real<lower=0, upper=100> sigma_Delta3;
-  real<lower=0, upper=100> sigma_Delta4;
-  
-  real<lower=0, upper=100> sigma_k;
-  real<lower=0, upper=10> sigma_z;
+  real<lower=0.1, upper=5> sigma_Delta1;
+  real<lower=0.1, upper=5> sigma_Delta2;
+  real<lower=0.1, upper=5> sigma_Delta3;
+  real<lower=0.1, upper=5> sigma_Delta4;
+  real<lower=0.1, upper=1> sigma_k;
+  real<lower=0.1, upper=1> sigma_z;
 }
 
 transformed parameters {
   matrix[C, t_last] transition_function = rep_matrix(0, C, t_last);
   matrix[C, t_last] gamma = rep_matrix(0, C, t_last);
+  
+  vector<lower=0, upper=100>[C]  Delta1 = inv_logit(mu_Delta1 + sigma_Delta1 * raw_Delta1) * 100;
+  vector<lower=0, upper=100>[C]  Delta2 = inv_logit(mu_Delta2 + sigma_Delta2 * raw_Delta2) * 100;
+  vector<lower=0, upper=100>[C]  Delta3 = inv_logit(mu_Delta3 + sigma_Delta3 * raw_Delta3) * 100;
+  vector<lower=10, upper=100>[C] Delta4 = inv_logit(mu_Delta4 + sigma_Delta4 * raw_Delta4) * 90 + 10;
+  vector<lower=0, upper=10>[C]   k      = inv_logit(mu_k + sigma_k * raw_k) * 10;
+  vector<lower=0, upper=1.15>[C] z      = inv_logit(mu_z + sigma_z * raw_z) * 1.15;
   
   for(c in 1:C) {
     for(t in 2:final_observed[c]) {
@@ -79,27 +89,26 @@ model {
   // epsilon_scale ~ inv_gamma(0.1, 0.1);
   epsilon_scale ~ normal(0, 5);
   
-  sigma_Delta1 ~ inv_gamma(0.5, 0.5);
-  sigma_Delta2 ~ inv_gamma(0.5, 0.5);
-  sigma_Delta3 ~ inv_gamma(0.5, 0.5);
-  sigma_Delta4 ~ inv_gamma(0.5, 0.5);
-  sigma_k ~ inv_gamma(0.5, 0.5);
-  sigma_z ~ inv_gamma(0.5, 0.5);
+  raw_Delta1 ~ std_normal();
+  raw_Delta2 ~ std_normal();
+  raw_Delta3 ~ std_normal();
+  raw_Delta4 ~ std_normal();
+  raw_k      ~ std_normal();
+  raw_z      ~ std_normal();
   
-  Delta1 ~ normal(mu_Delta1, sqrt(sigma_Delta1)) T[0, 100];
-  Delta2 ~ normal(mu_Delta2, sqrt(sigma_Delta2)) T[0, 100];
-  Delta3 ~ normal(mu_Delta3, sqrt(sigma_Delta3)) T[0, 100];
-  Delta4 ~ normal(mu_Delta4, sqrt(sigma_Delta4)) T[10, 100];
+  inv_logit(mu_Delta1) * 100 ~ normal(15.77, 10) T[0, 100];
+  inv_logit(mu_Delta2) * 100 ~ normal(40.97, 10) T[0, 100];
+  inv_logit(mu_Delta3) * 100 ~ normal(0.21, 10) T[0, 100];
+  inv_logit(mu_Delta4) * 90 + 10 ~ normal(19.82, 10) T[10, 100];
+  inv_logit(mu_k) * 10 ~ normal(2.93, 5) T[0, 10];
+  inv_logit(mu_z) * 1.15 ~ normal(0.4, 0.5) T[0, 1.15];
   
-  k   ~ normal(mu_k, sqrt(sigma_k)) T[0, 10];
-  z   ~ normal(mu_z, sqrt(sigma_z)) T[0, 1.15];
-  
-  mu_Delta1 ~ normal(15.77, 10) T[0, 100];
-  mu_Delta2 ~ normal(40.97, 10) T[0, 100];
-  mu_Delta3 ~ normal(0.21, 10) T[0, 100];
-  mu_Delta4 ~ normal(19.82, 10) T[10, 100];
-  mu_k ~ normal(2.93, 5) T[0, 10];
-  mu_z ~ normal(0.4, 0.5) T[0, 1.15];
+  target += inv_logit_adjustment(mu_Delta1);
+  target += inv_logit_adjustment(mu_Delta2);
+  target += inv_logit_adjustment(mu_Delta3);
+  target += inv_logit_adjustment(mu_Delta4);
+  target += inv_logit_adjustment(mu_k);
+  target += inv_logit_adjustment(mu_z);
   
   for(i in 1:N) {
     if(held_out[i] == 0 && time[i] > 1) {

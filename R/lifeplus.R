@@ -88,8 +88,8 @@ lifeplus <- function(
   }
   
   # Make sure there are no NAs in supplied columns
-  BayesTransitionModels:::check_nas(data, y)
-  BayesTransitionModels:::check_nas(data, year)
+  #BayesTransitionModels:::check_nas(data, y)
+  #BayesTransitionModels:::check_nas(data, year)
   
   # Initialize start and end year if necessary
   if(is.na(start_year)) start_year <- min(data[[year]])
@@ -101,7 +101,7 @@ lifeplus <- function(
   }
   
   ###### Load model #####
-  include_paths <- system.file("include", package = "BayesTransitionModels")
+  #include_paths <- system.file("include", package = "BayesTransitionModels")
   #stan_file_path <- system.file("stan/tfr_spline.stan", package = "BayesTransitionModels")
   
   if(model == "spline") {
@@ -125,7 +125,8 @@ lifeplus <- function(
   
   stan_model <- cmdstanr::cmdstan_model(
     stan_file_path,
-    include_paths = include_paths
+    dir = tempdir()
+    #include_paths = include_paths
   )
   
   #
@@ -139,10 +140,10 @@ lifeplus <- function(
     setdiff("intercept")
   
   # Make sure there are no NAs in any of the columns
-  for(column in hierarchical_column_names) {
-    if(column == "intercept") next
-    BayesTransitionModels:::check_nas(data, column)
-  }
+  #for(column in hierarchical_column_names) {
+  #  if(column == "intercept") next
+  #  BayesTransitionModels:::check_nas(data, column)
+  #}
   
   country_index <- data %>%
     dplyr::distinct(!!! syms(hierarchical_column_names)) %>%
@@ -170,10 +171,10 @@ lifeplus <- function(
   t_last <- max(data$t)
   
   # Set up hierarchical structures
-  a_data       <- BayesTransitionModels:::hierarchical_data(country_index, hierarchical_splines)
+  #a_data       <- BayesTransitionModels:::hierarchical_data(country_index, hierarchical_splines)
   
   # Set up spline basis
-  knots <- sort(c(seq(0, (max(data[[y]]) - 15) / (110 - 15), length.out = num_knots), 1, 2))
+  #knots <- sort(c(seq(0, (max(data[[y]]) - 15) / (110 - 15), length.out = num_knots), 1, 2))
   #knots <- c((c(15, 30, 45, 50, 55, 60, 65, 70, 75, 80, 85) - 15) / (85 - 15), 1000)
   if(model == "logistic" || model == "logistic_shock") {
     grid <- c(seq(from = 0, to = 110, by = 5)) # generating inputs
@@ -181,15 +182,15 @@ lifeplus <- function(
   else {
     grid <- c(seq(from = 0, to = 1, by = .05)) # generating inputs
   }
-  
-  B <- t(bs(grid, knots = knots, degree = spline_degree, intercept = FALSE))
-  B <- B[1:(nrow(B) - 1), ]
   num_grid <- length(grid)
-  num_basis <- nrow(B)
-  ext_knots <- c(rep(knots[1], spline_degree), knots, rep(knots[length(knots)], spline_degree))
   
-  a_lower_bound <- 0.01
-  a_upper_bound <- 10 
+  #B <- t(bs(grid, knots = knots, degree = spline_degree, intercept = FALSE))
+  #B <- B[1:(nrow(B) - 1), ]
+  #num_basis <- nrow(B)
+  #ext_knots <- c(rep(knots[1], spline_degree), knots, rep(knots[length(knots)], spline_degree))
+  
+  #a_lower_bound <- 0.01
+  #a_upper_bound <- 10 
   
   stan_data <- c(extra_stan_data, list(
     C = nrow(country_index),
@@ -205,23 +206,23 @@ lifeplus <- function(
     
     outlier_threshold = outlier_threshold,
     
-    a_n_terms = a_data$n_terms,
-    a_n_re = a_data$n_re,
-    a_re_start = array(a_data$re_start),
-    a_re_end = array(a_data$re_end),
-    a_model_matrix = a_data$model_matrix$mat,
+    #a_n_terms = a_data$n_terms,
+    #a_n_re = a_data$n_re,
+    #a_re_start = array(a_data$re_start),
+    #a_re_end = array(a_data$re_end),
+    #a_model_matrix = a_data$model_matrix$mat,
     
     # Spline settings
-    num_knots = length(knots),
-    knots = knots,
+    #num_knots = length(knots),
+    #knots = knots,
     
     num_grid = num_grid,
-    spline_degree = spline_degree,
+    #spline_degree = spline_degree,
     grid = grid,
-    B = B,
+    #B = B,
     
-    a_lower_bound = a_lower_bound,
-    a_upper_bound = a_upper_bound,
+    #a_lower_bound = a_lower_bound,
+    #a_upper_bound = a_upper_bound,
     R = R,
     
     crisis_in_projections = crisis_projections,

@@ -1,8 +1,8 @@
 library(patchwork)
 
 plot_comparison <- function(fit, country) {
-  fit$posteriors$temporal %>%
-    filter(name == country) %>%
+  fit$posteriors$temporal |>
+    filter(name == country) |>
     ggplot(aes(x = year, y = `50%`, color = variable)) +
     geom_line() +
     geom_line(aes(y = `2.5%`), lty = 2) +
@@ -12,8 +12,8 @@ plot_comparison <- function(fit, country) {
 
 
 plot_shock <- function(fit, areas = fit$country_index$name) {
-  fit$posteriors$temporal %>%
-    filter(variable == "shock", name %in% areas) %>%
+  fit$posteriors$temporal |>
+    filter(variable == "shock", name %in% areas) |>
     ggplot(aes(x = year, y = `50%`)) +
     geom_errorbar(aes(ymin = `2.5%`, ymax = `97.5%`), width = 0) +
     geom_point() +
@@ -21,17 +21,17 @@ plot_shock <- function(fit, areas = fit$country_index$name) {
 }
 
 plot_P_tilde <- function(fit) {
-  fit$samples %>% spread_draws(P_tilde2[c]) %>%
-    left_join(fit$country_index) %>%
-    group_by(name) %>%
-    mutate(P_tilde2 = 15 + P_tilde2) %>%
+  fit$samples |> spread_draws(P_tilde2[c]) |>
+    left_join(fit$country_index) |>
+    group_by(name) |>
+    mutate(P_tilde2 = 15 + P_tilde2) |>
     ggplot(aes(x = P_tilde2)) +
     geom_density() +
     facet_wrap(~name)
 }
 
 plot_mean_transition <- function(fit) {
-  fit$posteriors$transition_function_mean %>%
+  fit$posteriors$transition_function_mean |>
     ggplot(aes(x = 15 + x * (85 - 15), y = transition_function_mean)) +
     geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
     scale_fill_brewer()
@@ -43,17 +43,36 @@ plot_transition <- function(fit, areas = c()) {
     areas <- unique(fit$data$name)
   }
   
-  fit$posteriors$transition_functions %>%
-    filter(name %in% areas) %>%
-    ggplot(aes(x = 15 + x * (85 - 15), y = transition_function_pred)) +
-    geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
-    scale_fill_brewer() +
-    facet_wrap(~name)
+  
+  data <- fit$data |>
+    filter(name %in% areas) |>
+    arrange(name, period) |>
+    group_by(name) |>
+    mutate(diff = c(diff(e0), NA))
+  
+  if(fit$model == "logistic" || fit$model == "logistic_shock") {
+    fit$posteriors$transition_functions |>
+      filter(name %in% areas) |>
+      ggplot(aes(x = x, y = transition_function_pred)) +
+      geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
+      scale_fill_brewer() +
+      geom_point(data = data, aes(x = e0, y = diff)) +
+      facet_wrap(~name)
+  }
+  else {
+    fit$posteriors$transition_functions |>
+      filter(name %in% areas) |>
+      ggplot(aes(x = 15 + x * (110 - 15), y = transition_function_pred)) +
+      geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
+      scale_fill_brewer() +
+      geom_point(data = data, aes(x = e0, y = diff)) +
+      facet_wrap(~name)
+  }
 }
 
 plot_with_shocks <- function(fit, area) {
-  p1 <- fit$data %>%
-    filter(name == area) %>%
+  p1 <- fit$data |>
+    filter(name == area) |>
     ggplot(aes(x = year, y = e0)) +
     geom_line() +
     geom_point() +
@@ -63,8 +82,8 @@ plot_with_shocks <- function(fit, area) {
           axis.ticks.x = element_blank()) +
     ggtitle(label = "", subtitle = area)
   
-  p2 <- fit$posteriors$temporal %>%
-    filter(variable == "shock", name == area) %>%
+  p2 <- fit$posteriors$temporal |>
+    filter(variable == "shock", name == area) |>
     ggplot(aes(x = year, y = `50%`)) +
     geom_errorbar(aes(ymin = `2.5%`, ymax = `97.5%`), width = 0) +
     geom_point() +
@@ -76,11 +95,11 @@ plot_with_shocks <- function(fit, area) {
 
 plot_shock_corrected <- function(fit, areas = fit$country_index$name) {
   threshold <- 2 * fit$samples$summary("epsilon_scale")$median
-  fit$data %>% 
-    filter(name %in% areas) %>%
+  fit$data |> 
+    filter(name %in% areas) |>
     left_join(
-      fit$posteriors$temporal %>% 
-      filter(variable == "shock", name %in% areas, `97.5%` < -threshold)) %>% 
+      fit$posteriors$temporal |> 
+      filter(variable == "shock", name %in% areas, `97.5%` < -threshold)) |> 
     ggplot(aes(x = year, y = e0)) + 
     geom_point(aes(shape = "Observations", color = "Observations"), size = 0.5) + 
     geom_point(aes(shape = "Shock-corrected", y = e0 - `50%`, color = "Shock-corrected"), size = 0.5) +

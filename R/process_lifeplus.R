@@ -4,7 +4,7 @@ process_life_fit <- function(fit, parallel_chains = NULL) {
   #
   # eta and epsilon summaries
   #
-  if(fit$model == "spline") {
+  if(fit$model == "spline" || fit$model == "logistic") {
     temporal_variables <- c("eta")
   }
   else {

@@ -9,6 +9,7 @@ source("R/plot_theme.R")
 source("R/lifeplus.R")
 source("R/process_lifeplus.R")
 
+data(UNlocations, package = "wpp2024")
 data(e0M1, package = "wpp2024")
 data(pop1, package = "wpp2024")
 data(include_2010, package = "bayesTFR")
@@ -74,7 +75,7 @@ datM |>
   geom_point(size = 0.25) +
   geom_line(alpha = 0.5) +
   facet_wrap(~name) +
-  pub_theme +
+  #pub_theme +
   labs(x = "Year", y = expression(e[0]))
 
 ggsave("plots/life_examples.pdf", height = 5, width = 10)
@@ -88,20 +89,25 @@ mean(e0_differences$diff < -threshold, na.rm = TRUE)
 fits <- expand_grid(
   #scale_global = c(1e-3, 1e-2, 1e-1),
   scale_global = 1e-2,
-  model = c("shock2")
+  #model = c("shock2")
+  model = "logistic_shock",
+  outlier_threshold = 1e3
 ) |>
   bind_rows(
-    tibble(scale_global = 1e-2, model = "spline")
+    tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
+    tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
   ) |>
-  mutate(fit = pmap(list(scale_global, model), function(scale_global, model) {
+  mutate(fit = pmap(list(scale_global, model, outlier_threshold), function(scale_global, model, outlier_threshold) {
     lifeplus(
-      datM,
+      datM |> filter(name %in% c("Kenya", "Uganda")),
       y = "e0", 
       year = "year",
       area = "name",
       source = "source",
       start_year = 1950,
       end_year = 2100,
+      
+      outlier_threshold = outlier_threshold,
       
       model = model,
       
@@ -278,7 +284,7 @@ validation_results_summary_by_area <- validation_results |>
 
 validation_table <- validation_results_summary |>
   #select(normal_data_model, data_model_df, scale_global, num_knots, cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) |>
-  select(scale_global, num_knots, cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) |>
+  select(n, cutoff_year, variable, model, scale_global, below, coverage, above, ci_width, below0.1, coverage0.8, above0.9, ci_width0.8, median_error, median_abs_error) |>
   mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8, ci_width, ci_width0.8, median_error, median_abs_error), signif, 3) |>
   mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), `*`, 100) |>
   mutate_at(vars(below, coverage, above, below0.1, above0.9, coverage0.8), paste0, "%") |>
@@ -287,8 +293,8 @@ validation_table <- validation_results_summary |>
     model == "shock" ~ "rate shocks",
     model == "spline" ~ "no shocks"
   )) |>
-  mutate(cutoff_year = cutoff_year - 5,
-         cutoff_year = glue::glue("{cutoff_year}-{cutoff_year + 5}"),
+  mutate(#cutoff_year = cutoff_year - 5,
+         #cutoff_year = glue::glue("{cutoff_year}-{cutoff_year + 5}"),
          index = 1:n()) |>
   rename(Cutoff = cutoff_year,
          Model = model,
@@ -320,8 +326,8 @@ validation_table_by_area <- validation_results_summary_by_area |>
     model == "shock" ~ "rate shocks",
     model == "spline" ~ "no shocks"
   )) |>
-  mutate(cutoff_year = cutoff_year - 5,
-         cutoff_year = glue::glue("{cutoff_year}-{cutoff_year + 5}"),
+  mutate(#cutoff_year = cutoff_year - 5,
+         #cutoff_year = glue::glue("{cutoff_year}-{cutoff_year + 5}"),
          index = 1:n()) |>
   rename(Cutoff = cutoff_year,
          Model = model,
@@ -346,7 +352,8 @@ remove_dups <- function(x) {
 }
 
 validation_table_by_area |>
-  filter(Cutoff == "2005-2010", variable == "eta") |>
+  #filter(Cutoff == "2005-2010", variable == "eta") |>
+  filter(variable == "eta") |>
   ungroup() |>
   mutate(area_name = ifelse(area_name == "Latin America, Northern America, Caribbean", "Americas", area_name)) |>
   mutate(variable = ifelse(variable == "eta", "crisis", "crisis-free")) |>

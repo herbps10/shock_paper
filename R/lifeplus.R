@@ -136,7 +136,7 @@ lifeplus <- function(
   # Create district index for matching district and district index
   hierarchical_column_names <- unique(c(
     hierarchical_splines
-  )) %>%
+  )) |>
     setdiff("intercept")
   
   # Make sure there are no NAs in any of the columns
@@ -145,8 +145,8 @@ lifeplus <- function(
   #  BayesTransitionModels:::check_nas(data, column)
   #}
   
-  country_index <- data %>%
-    dplyr::distinct(!!! syms(hierarchical_column_names)) %>%
+  country_index <- data |>
+    dplyr::distinct(!!! syms(hierarchical_column_names)) |>
     dplyr::mutate(c = 1:n())
   
   # Create year lookup table
@@ -157,8 +157,8 @@ lifeplus <- function(
   
   year_by <- c()
   year_by[year] = year
-  data <- data %>%
-    dplyr::left_join(time_index, by = year_by) %>%
+  data <- data |>
+    dplyr::left_join(time_index, by = year_by) |>
     dplyr::left_join(country_index, by = hierarchical_column_names)
   
   if(length(held_out) == 1 && held_out == FALSE) {
@@ -192,44 +192,19 @@ lifeplus <- function(
   #a_lower_bound <- 0.01
   #a_upper_bound <- 10 
   
+  obs <- data |> select(t, c, e0) |> pivot_wider(names_from = "t", values_from = "e0") |> select(-c) |> as.matrix()
+  
   stan_data <- c(extra_stan_data, list(
-    C = nrow(country_index),
-    T = nrow(time_index),
-    N = nrow(data),
-    held_out = held_out,
-    t_last = t_last,
+    C = nrow(obs),
+    T = ncol(obs),
+    Tpred = max(time_index$t),
     
-    time = array(data$t),
-    country = array(data$c),
-    
-    y = array(data[[y]]),
+    y = obs,
     
     outlier_threshold = outlier_threshold,
     
-    #a_n_terms = a_data$n_terms,
-    #a_n_re = a_data$n_re,
-    #a_re_start = array(a_data$re_start),
-    #a_re_end = array(a_data$re_end),
-    #a_model_matrix = a_data$model_matrix$mat,
-    
-    # Spline settings
-    #num_knots = length(knots),
-    #knots = knots,
-    
     num_grid = num_grid,
-    #spline_degree = spline_degree,
-    grid = grid,
-    #B = B,
-    
-    #a_lower_bound = a_lower_bound,
-    #a_upper_bound = a_upper_bound,
-    R = R,
-    
-    crisis_in_projections = crisis_projections,
-    country_specific_global_shrinkage = country_specific_global_shrinkage,
-    
-    normal_data_model = normal_data_model,
-    data_model_df = data_model_df
+    grid = grid
   ))
   
   fit <- stan_model$sample(
@@ -249,7 +224,6 @@ lifeplus <- function(
                  year = year,
                  source = source,
                  area = area,
-                 hierarchical_splines = hierarchical_splines,
                  held_out = held_out,
                  model = model)
   

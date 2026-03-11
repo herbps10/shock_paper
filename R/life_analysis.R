@@ -84,19 +84,23 @@ threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 # How many of the observed differences fall below this threshold?
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
-random_countries <- sample(unique(datM$name), 25)
+set.seed(1)
+random_countries <- sample(unique(datM$name), 20)
 
 fits <- expand_grid(
   #scale_global = c(1e-3, 1e-2, 1e-1),
   scale_global = 1e-2,
   #model = c("shock2")
-  model = "logistic_shock",
-  outlier_threshold = 1e3
+  #model = "logistic_shock",
+  #outlier_threshold = 1e3
+  model = "logistic",
+  outlier_threshold = 5
 ) |>
-  #bind_rows(
-  #  tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
-  #  tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
-  #) |>
+  bind_rows(
+    #tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
+    tibble(scale_global = 1e-2, model = "logistic_shock", outlier_threshold = 1e3)
+    #tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
+  ) |>
   mutate(fit = pmap(list(scale_global, model, outlier_threshold), function(scale_global, model, outlier_threshold) {
     lifeplus(
       datM |> filter(name %in% random_countries),
@@ -106,6 +110,8 @@ fits <- expand_grid(
       source = "source",
       start_year = 1950,
       end_year = 2100,
+      
+      init = 0,
       
       outlier_threshold = outlier_threshold,
       
@@ -118,12 +124,12 @@ fits <- expand_grid(
       normal_data_model = TRUE,
       data_model_df = 5,
       
-      adapt_delta = 0.95,
-      max_treedepth = 12,
+      adapt_delta = 0.99,
+      max_treedepth = 14,
       parallel_chains = 4,
-      iter_warmup = 500,
+      iter_warmup = 250,
       #iter_sampling = 1e3,
-      iter_sampling = 500,
+      iter_sampling = 250,
       
       extra_stan_data = list(
         scale_global = scale_global,
@@ -136,7 +142,6 @@ fits <- expand_grid(
 #BayesTransitionModels:::plot_indicator(fits_with_shocks$fit[[1]], areas = "Somalia")
 #BayesTransitionModels:::plot_temporal("eta_crisisfree", fits_with_shocks$fit[[1]], areas = "Somalia")
 #BayesTransitionModels:::plot_temporal("shock", fits_with_shocks$fit[[1]], areas = "Cambodia")
-
 
 BayesTransitionModels::plot_indicator(fits$fit[[1]], areas = "Timor-Leste")
 
@@ -537,19 +542,27 @@ validation_results[c(1,4),] |>
   mutate(diff = spline - shock2) |> 
   arrange(-diff)
 
-tidybayes::spread_draws(fits$fit[[1]]$samples, Delta4[c]) |> 
+fit <- fits$fit[[1]]
+tidybayes::spread_draws(fit$samples, z[c]) |> 
   median_qi(.width =c(0.5, 0.9, 0.95)) |> 
-  left_join(fits$fit[[1]]$country_index) |> 
-  ggplot(aes(x = Delta4, y = reorder(name, Delta4))) + 
+  left_join(fit$country_index) |> 
+  ggplot(aes(x = z, y = name)) +
   tidybayes::geom_interval(aes(xmin = .lower, xmax = .upper)) + 
   geom_point() + 
   scale_color_brewer()
 
 bayesplot::mcmc_dens(fits$fit[[1]]$samples$draws(c("sigma_Delta1", "sigma_Delta2", "sigma_Delta3", "sigma_Delta4", "sigma_z", "sigma_k", "epsilon_scale")))
-bayesplot::mcmc_dens(fits$fit[[1]]$samples$draws(c("mu_Delta1", "mu_Delta2", "mu_Delta3", "mu_Delta4", "mu_z", "mu_k", "epsilon_scale")))
+bayesplot::mcmc_dens(fits$fit[[2]]$samples$draws(c("mu_Delta1", "mu_Delta2", "mu_Delta3", "mu_Delta4", "mu_z", "mu_k", "epsilon_scale")))
 
-tidybayes::spread_draws(fits$fit[[1]]$samples, Delta1[c]) |>
-  group_by(.chain, .iteration, .draw) |>
-  summarize(sd = sd(Delta1)) |>
-  ungroup() |>
-  ggplot(aes(x = sd)) + geom_density()
+plot_shock(fits$fit[[2]])
+
+plot_transition(fits$fit[[1]]) + ylim(c(0, 10))
+plot_transition(fits$fit[[2]]) + ylim(c(0, 10))
+
+area <- random_countries
+plot_temporal("eta", fits$fit[[1]], area, plot_data = TRUE) + ylim(c(15, 150))
+plot_temporal("eta", fits$fit[[2]], area, plot_data = TRUE) + ylim(c(15, 150))
+plot_temporal("eta_crisisfree", fits$fit[[2]], area, plot_data = TRUE) + ylim(c(15, 150))
+
+fits$fit[[1]]$posteriors$temporal |> filter(year == 2100) |> mutate(ci_width = `90%` - `10%`)
+fits$fit[[2]]$posteriors$temporal |> filter(year == 2100) |> mutate(ci_width = `90%` - `10%`)

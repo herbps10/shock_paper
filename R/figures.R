@@ -15,8 +15,8 @@ epsilon_scale |>
 # Long-term projections
 #
 
-fit_shock <- fits$fit[[1]]
-fit_noshock <- fits$fit[[2]]
+fit_noshock <- fits$fit[[1]]
+fit_shock <- fits$fit[[2]]
 
 ci_width_comparison <- fit_noshock$posteriors$temporal %>%
   filter(variable == "eta", year == 2100) %>%
@@ -27,6 +27,12 @@ ci_width_comparison <- fit_noshock$posteriors$temporal %>%
       filter(variable == "eta", year == 2100) %>%
       mutate(ci_width_shocks = `90%` - `10%`) %>%
       select(name, year, ci_width_shocks)    
+  ) |>
+  left_join(
+    fit_shock$posteriors$temporal %>%
+      filter(variable == "eta_crisisfree", year == 2100) %>%
+      mutate(ci_width_shocks_crisisfree = `90%` - `10%`) %>%
+      select(name, year, ci_width_shocks_crisisfree)    
   )
 
 projection_comparison <- fit_noshock$posteriors$temporal %>%

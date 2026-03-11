@@ -22,11 +22,11 @@ process_life_fit <- function(fit, parallel_chains = NULL) {
   #
   # Transition function summaries
   #
-  transition_function_mean <- fit$samples$draws("transition_function_mean") %>% spread_draws(transition_function_mean[i]) %>%
-    left_join(tibble(i = 1:length(fit$stan_data$grid), x = fit$stan_data$grid)) %>%
-    filter(x < 1000) %>%
-    group_by(x) %>%
-    median_qi(transition_function_mean, .width = c(0.5, 0.8, 0.95))
+  #transition_function_mean <- fit$samples$draws("transition_function_mean") %>% spread_draws(transition_function_mean[i]) %>%
+  #  left_join(tibble(i = 1:length(fit$stan_data$grid), x = fit$stan_data$grid)) %>%
+  #  filter(x < 1000) %>%
+  #  group_by(x) %>%
+  #  median_qi(transition_function_mean, .width = c(0.5, 0.8, 0.95))
 
   transition_functions <- fit$samples$draws("transition_function_pred") %>% spread_draws(transition_function_pred[c, i]) %>%
     left_join(fit$country_index) %>%
@@ -43,8 +43,8 @@ process_life_fit <- function(fit, parallel_chains = NULL) {
   
   ans <- list(
     temporal = temporal,
-    transition_functions = transition_functions,
-    transition_function_mean = transition_function_mean
+    transition_functions = transition_functions
+    #transition_function_mean = transition_function_mean
     #a_sigma = a_sigma
   )
   

@@ -112,3 +112,69 @@ plot_shock_corrected <- function(fit, areas = fit$country_index$name) {
     pub_theme
 }
 
+
+plot_temporal <- function(x, fit, areas = c(), plot_data = FALSE, color_sources = FALSE) {
+  if(length(areas) == 0) areas <- fit$country_index[[fit$area]]
+  
+  post <- fit$posteriors$temporal %>%
+    filter(!!sym(fit$area) %in% areas) %>%
+    filter(.data$variable == x)
+  
+  
+  p <- ggplot2::ggplot(post, aes_string(x = fit$year, y = "`50%`")) +
+    ggplot2::geom_ribbon(aes(ymin = .data$`2.5%`, ymax = .data$`97.5%`, fill = "95%")) +
+    ggplot2::geom_ribbon(aes(ymin = .data$`10%`,  ymax = .data$`90%`, fill = "80%")) +
+    ggplot2::geom_ribbon(aes(ymin = .data$`25%`,  ymax = .data$`75%`, fill = "50%")) +
+    ggplot2::geom_line() +
+    ggplot2::scale_fill_brewer(direction = -1) +
+    ggplot2::facet_wrap(vars(!!sym(fit$area))) +
+    labs(fill = "Posterior\nQuantile", x = fit$year)
+  
+  if(plot_data == TRUE) {
+    data_tibble <- tibble::tibble(i = 1:length(fit$held_out), held_out = as.logical(fit$held_out))
+    data <- fit$data %>%
+      dplyr::mutate(i = 1:n()) %>%
+      dplyr::left_join(data_tibble, by = "i")
+    
+    data[[fit$source]] <- factor(data[[fit$source]])
+    
+    filtered_data <- data %>%
+      dplyr::filter(!!sym(fit$area) %in% areas)
+    
+    if(!is.null(fit$se)) {
+      filtered_data <- filtered_data %>% mutate(
+        lower = truncnorm::qtruncnorm(0.025, mean = !!sym(fit$y), sd = !!sym(fit$se), a = 0, b = 1),
+        upper = truncnorm::qtruncnorm(0.975, mean = !!sym(fit$y), sd = !!sym(fit$se), a = 0, b = 1)
+      )
+    }
+    
+    some_held_out <- any(fit$held_out == 1)
+    
+    if(color_sources == TRUE) {
+      if(some_held_out == TRUE) {
+        point_aes <- aes_string(y = fit$y, color = fit$source, shape = "held_out")
+      }
+      else {
+        point_aes <- aes_string(y = fit$y, color = fit$source)
+      }
+      if(!is.null(fit$se)) {
+        p <- p + ggplot2::geom_errorbar(aes_string(y = fit$y, ymin = "lower", ymax = "upper", color = fit$source), alpha = 0.3, width = 0, data = filtered_data)
+      }
+      p <- p + ggplot2::geom_point(point_aes, data = filtered_data, alpha = 0.7)
+    }
+    else {
+      if(some_held_out == TRUE) {
+        point_aes <- aes_string(y = fit$y, shape = "held_out")
+      }
+      else {
+        point_aes <- aes_string(y = fit$y)
+      }
+      if(!is.null(fit$se)) {
+        p <- p + ggplot2::geom_errorbar(aes_string(y = fit$y, ymin = "lower", ymax = "upper"), alpha = 0.3, width = 0, data = filtered_data)
+      }
+      p <- p + ggplot2::geom_point(point_aes, data = filtered_data, alpha = 0.7)
+    }
+  }
+  
+  p
+}

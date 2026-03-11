@@ -17,6 +17,7 @@ epsilon_scale |>
 
 fit_noshock <- fits$fit[[1]]
 fit_shock <- fits$fit[[2]]
+fit_noshock_naive <- read_rds("fits/fits-2.rds")$fit[[1]]
 
 ci_width_comparison <- fit_noshock$posteriors$temporal %>%
   filter(variable == "eta", year == 2100) %>%
@@ -33,6 +34,12 @@ ci_width_comparison <- fit_noshock$posteriors$temporal %>%
       filter(variable == "eta_crisisfree", year == 2100) %>%
       mutate(ci_width_shocks_crisisfree = `90%` - `10%`) %>%
       select(name, year, ci_width_shocks_crisisfree)    
+  ) |>
+  left_join(
+    fit_noshock_naive$posteriors$temporal %>%
+      filter(variable == "eta", year == 2100) %>%
+      mutate(ci_width_no_shocks_naive = `90%` - `10%`) %>%
+      select(name, year, ci_width_no_shocks_naive)    
   )
 
 projection_comparison <- fit_noshock$posteriors$temporal %>%
@@ -63,7 +70,7 @@ ci_width_labels <- ci_width_comparison |>
   filter(ci_width_shocks > 19.4)
 
 p2 <- ci_width_comparison |>
-  ggplot(aes(x = ci_width_no_shocks, y = ci_width_shocks)) +
+  ggplot(aes(x = ci_width_no_shocks_naive, y = ci_width_shocks)) +
   geom_point() +
   geom_abline(slope = 1, lty = 2) +
   #geom_text(data = ci_width_labels, aes(label = name), hjust = 1, nudge_x = -0.1, nudge_y = 0, size = 3) +
@@ -109,9 +116,6 @@ eta |>
   theme(legend.position = "bottom")
 
 ggsave("plots/life_fit_examples.pdf", width = 10, height = 4)
-=======
-
-ggsave("plots/life_fit_examples.pdf", width = 10, height = 4)
 
 lower_shocks_countries <- projection_comparison |>
   mutate(abs_diff = abs(median_no_shocks - median_shocks), diff = median_no_shocks - median_shocks) |>
@@ -133,8 +137,10 @@ eta |>
 
 plot_comparison(fit_shock, "Uganda")
 
-plot_transition(fit_shock,   "Lesotho")
-plot_transition(fit_noshock, "Lesotho")
+plot_temporal("eta", fit_shock, "Bangladesh")
+plot_shock(fit_shock, "Bangladesh")
+plot_transition(fit_shock,   "Bangladesh") + ylim(c(-5, 5))
+plot_transition(fit_noshock, "Bangladesh") + ylim(c(-5, 5))
 
 areas <- c("Kenya", "Uganda", "Zimbabwe", "Haiti")
 data <- fit_shock$data |>

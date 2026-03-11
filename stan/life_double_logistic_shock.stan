@@ -82,7 +82,7 @@ parameters {
   real<lower=0.01, upper=1> sigma_z;
   
   //vector<lower=0, upper=100>[C]  Delta1;
-  //vector<lower=0, upper=100>[C]  Delta2;
+  //vector<lower=30, upper=100>[C]  Delta2;
   //vector<lower=0, upper=100>[C]  Delta3;
   //vector<lower=10, upper=100>[C] Delta4;
   //vector<lower=0, upper=10>[C]   k;
@@ -102,13 +102,14 @@ transformed parameters {
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
   
   vector<lower=0, upper=100>[C]  Delta1 = inv_logit(mu_Delta1 + sigma_Delta1 * raw_Delta1) * 100;
-  vector<lower=0, upper=100>[C]  Delta2 = inv_logit(mu_Delta2 + sigma_Delta2 * raw_Delta2) * 100;
+  vector<lower=30, upper=100>[C]  Delta2 = inv_logit(mu_Delta2 + sigma_Delta2 * raw_Delta2) * 70 + 30;
   vector<lower=0, upper=100>[C]  Delta3 = inv_logit(mu_Delta3 + sigma_Delta3 * raw_Delta3) * 100;
   vector<lower=10, upper=100>[C] Delta4 = inv_logit(mu_Delta4 + sigma_Delta4 * raw_Delta4) * 90 + 10;
   vector<lower=0, upper=10>[C]   k      = inv_logit(mu_k + sigma_k * raw_k) * 10;
   vector<lower=0, upper=1.15>[C] z      = inv_logit(mu_z + sigma_z * raw_z) * 1.15;
   
-  matrix[C, T] shock = rep_matrix(0, C, T);
+  array[1] matrix[C, T] shock;
+  shock[1] = rep_matrix(0, C, T);
   real<lower=0> global_shrinkage = aux1_global * sqrt (aux2_global) * scale_global * epsilon_scale;
   vector<lower=0>[n_shocks] local_shrinkage = aux1_local .* sqrt(aux2_local);
   
@@ -120,13 +121,13 @@ transformed parameters {
     vector[n_shocks] shock_shrinkage = shock_raw .* truncated_local_shrinkage * global_shrinkage;
     
     for(c in 1:C) {
-      shock[c, ] = to_row_vector(shock_shrinkage[((c - 1) * T + 1):(c * T)]);
+      shock[1][c, ] = to_row_vector(shock_shrinkage[((c - 1) * T + 1):(c * T)]);
     }
   }
   
   for(t in 2:T) {
     //transition_function[, t - 1] = rate_double_logistic(y[, t - 1] - shock[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z) + shock[, t] - shock[, t - 1];
-    transition_function[, t - 1] = rate_double_logistic(y[, t - 1] - shock[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z) + shock[, t] - shock[, t - 1];
+    transition_function[, t - 1] = rate_double_logistic(y[, t - 1] - shock[1][, t - 1], Delta1, Delta2, Delta3, Delta4, k, z) + shock[1][, t] - shock[1][, t - 1];
   }
 }
 
@@ -178,34 +179,38 @@ model {
   }
 }
 generated quantities {
-  matrix[C, Tpred] eta;
-  matrix[C, Tpred] eta_crisisfree;
-  matrix[C, Tpred] shock2;
+  array[10] matrix[C, Tpred] eta;
+  array[10] matrix[C, Tpred] eta_crisisfree;
+  array[10] matrix[C, Tpred] shock2;
+  
   matrix[C, num_grid] transition_function_pred;
   
-  eta[1:C, 1:T] = y;
-  eta_crisisfree[1:C, 1:T] = y;
-  shock2[1:C, 1:T] = shock;
+  for(rep in 1:10) {
+    eta[rep][1:C, 1:T] = y;
+    eta_crisisfree[rep][1:C, 1:T] = y;
+    
+    shock2[rep][1:C, 1:T] = shock[1];
+    
+    for(t in (T + 1):Tpred) {
+      for(c in 1:C) {
+        shock2[rep][c, t] = shock_rng(nu_local, c_slab, global_shrinkage);
+      }
+      
+      vector[C] transition = rate_double_logistic(eta[rep][, t - 1] - shock2[rep][, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
+      for(c in 1:C) {
+        real error = normal_rng(0, epsilon_scale);
+        eta[rep][c, t] = eta[rep][c, t - 1] + transition[c] + error + shock2[rep][c, t] - shock2[rep][c, t - 1];
+      }
+      
+      vector[C] transition_crisisfree = rate_double_logistic(eta_crisisfree[rep][, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
+      for(c in 1:C) {
+        real error = normal_rng(0, epsilon_scale);
+        eta_crisisfree[rep][c, t] = eta_crisisfree[rep][c, t - 1] + transition_crisisfree[c] + error;
+      }
+    }
+  }
   
-  for(t in T:Tpred) {
-    for(c in 1:C) {
-      shock2[c, t] = shock_rng(nu_local, c_slab, global_shrinkage);
-    }
-    
-    vector[C] transition = rate_double_logistic(eta[, t - 1] - shock2[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
-    for(c in 1:C) {
-      real error = normal_rng(0, epsilon_scale);
-      eta[c, t] = eta[c, t - 1] + transition[c] + error + shock2[c, t] - shock2[c, t - 1];
-    }
-    
-    vector[C] transition_crisisfree = rate_double_logistic(eta_crisisfree[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
-    for(c in 1:C) {
-      real error = normal_rng(0, epsilon_scale);
-      eta_crisisfree[c, t] = eta_crisisfree[c, t - 1] + transition_crisisfree[c] + error;
-    }
-    
-    for(i in 1:num_grid) {
-      transition_function_pred[, i] = rate_double_logistic(rep_vector(grid[i], C), Delta1, Delta2, Delta3, Delta4, k, z);
-    }
+  for(i in 1:num_grid) {
+    transition_function_pred[, i] = rate_double_logistic(rep_vector(grid[i], C), Delta1, Delta2, Delta3, Delta4, k, z);
   }
 }

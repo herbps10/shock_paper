@@ -13,9 +13,9 @@ plot_comparison <- function(fit, country) {
 
 plot_shock <- function(fit, areas = fit$country_index$name) {
   fit$posteriors$temporal |>
-    filter(variable == "shock", name %in% areas) |>
+    filter(variable == "shock2", name %in% areas) |>
     ggplot(aes(x = year, y = `50%`)) +
-    geom_errorbar(aes(ymin = `2.5%`, ymax = `97.5%`), width = 0) +
+    geom_errorbar(aes(ymin = `1%`, ymax = `99%`), width = 0) +
     geom_point() +
     facet_wrap(~name)
 }

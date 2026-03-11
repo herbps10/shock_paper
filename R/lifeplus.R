@@ -192,7 +192,12 @@ lifeplus <- function(
   #a_lower_bound <- 0.01
   #a_upper_bound <- 10 
   
-  obs <- data |> select(t, c, e0) |> pivot_wider(names_from = "t", values_from = "e0") |> select(-c) |> as.matrix()
+  if(length(held_out) == 1 && held_out == FALSE) {
+    obs <- data |> select(t, c, e0) |> pivot_wider(names_from = "t", values_from = "e0") |> select(-c) |> as.matrix()
+  }
+  else {
+    obs <- data[held_out == 0,] |> select(t, c, e0) |> pivot_wider(names_from = "t", values_from = "e0") |> select(-c) |> as.matrix()
+  }
   
   stan_data <- c(extra_stan_data, list(
     C = nrow(obs),

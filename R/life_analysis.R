@@ -85,8 +85,7 @@ threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
 set.seed(2)
-random_countries <- sample(unique(datM$name), 15)
-random_countries <- c("Dem. People's Republic of Korea", "Republic of Korea", "Haiti", "Bosnia and Herzegovina")
+random_countries <- sample(unique(datM$name), 25)
 
 fits <- expand_grid(
   #scale_global = c(1e-3, 1e-2, 1e-1),
@@ -112,25 +111,16 @@ fits <- expand_grid(
       start_year = 1950,
       end_year = 2100,
       
-      init = 0,
-      
       outlier_threshold = outlier_threshold,
       
       model = model,
       
-      spline_degree = 2,
-      num_knots = 6, 
-      hierarchical_splines = c("intercept", "name"),
-      
-      normal_data_model = TRUE,
-      data_model_df = 5,
-      
-      adapt_delta = 0.99,
-      max_treedepth = 14,
+      adapt_delta = 0.95,
+      max_treedepth = 12,
       parallel_chains = 4,
       iter_warmup = 250,
       #iter_sampling = 1e3,
-      iter_sampling = 1e3,
+      iter_sampling = 250,
       
       extra_stan_data = list(
         scale_global = scale_global,
@@ -139,10 +129,6 @@ fits <- expand_grid(
       )
     )
   }))
-
-#BayesTransitionModels:::plot_indicator(fits_with_shocks$fit[[1]], areas = "Somalia")
-#BayesTransitionModels:::plot_temporal("eta_crisisfree", fits_with_shocks$fit[[1]], areas = "Somalia")
-#BayesTransitionModels:::plot_temporal("shock", fits_with_shocks$fit[[1]], areas = "Cambodia")
 
 BayesTransitionModels::plot_indicator(fits$fit[[1]], areas = "Timor-Leste")
 
@@ -172,7 +158,7 @@ Delta_shock <- spread_draws(fit_shock$samples$draws(c("Delta1", "Delta2", "Delta
 Delta_noshock <- spread_draws(fit_noshock$samples$draws(c("Delta1", "Delta2", "Delta3", "Delta4", "k", "z")), Delta1[c], Delta2[c], Delta3[c], Delta4[c], k[c], z[c])
 
 (Delta_shock |> median_qi()) |> left_join(Delta_noshock |> median_qi(), by = "c") |> left_join(fit_shock$country_index)  |>
-  select(name, Delta4.x, Delta4.y)
+  select(name, Delta1.x, Delta1.y, Delta2.x, Delta2.y, Delta3.x, Delta3.y, Delta4.x, Delta4.y, k.x, k.y, z.x, z.y)
 
 name <- random_countries
 plot_transition(fit_noshock_naive, name)

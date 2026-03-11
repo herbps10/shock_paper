@@ -102,7 +102,7 @@ model {
   raw_z      ~ std_normal();
   
   inv_logit(mu_Delta1) * 100 ~ normal(15.77, 10) T[0, 100];
-  inv_logit(mu_Delta2) * 100 ~ normal(40.97, 10) T[0, 100];
+  inv_logit(mu_Delta2) * 70 + 30~ normal(40.97, 10) T[30, 100];
   inv_logit(mu_Delta3) * 100 ~ normal(0.21, 10) T[0, 100];
   inv_logit(mu_Delta4) * 90 + 10 ~ normal(19.82, 10) T[10, 100];
   inv_logit(mu_k) * 10 ~ normal(2.93, 5) T[0, 10];

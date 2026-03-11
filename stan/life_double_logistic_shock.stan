@@ -9,7 +9,7 @@ functions {
     //real shock_raw_pred = normal_lub_rng(0, 1, negative_infinity(), 0);
     real shock_raw_pred = normal_rng(0, 1);
     real local_shrinkage_pred = student_t_rng(nu_local, 0, 1);
-    real truncated_local_shrinkage_pred = sqrt(c_slab^2 * square(local_shrinkage_pred) ./ (c_slab^2 + global_shrinkage^2 * square(local_shrinkage_pred)));
+    real truncated_local_shrinkage_pred = sqrt(square(c_slab) * square(local_shrinkage_pred) ./ (square(c_slab) + square(global_shrinkage) * square(local_shrinkage_pred)));
     return shock_raw_pred * truncated_local_shrinkage_pred * global_shrinkage;
   } 
   
@@ -102,7 +102,7 @@ transformed parameters {
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
   
   vector<lower=0, upper=100>[C]  Delta1 = inv_logit(mu_Delta1 + sigma_Delta1 * raw_Delta1) * 100;
-  vector<lower=30, upper=100>[C]  Delta2 = inv_logit(mu_Delta2 + sigma_Delta2 * raw_Delta2) * 70 + 30;
+  vector<lower=20, upper=100>[C]  Delta2 = inv_logit(mu_Delta2 + sigma_Delta2 * raw_Delta2) * 80 + 20;
   vector<lower=0, upper=100>[C]  Delta3 = inv_logit(mu_Delta3 + sigma_Delta3 * raw_Delta3) * 100;
   vector<lower=10, upper=100>[C] Delta4 = inv_logit(mu_Delta4 + sigma_Delta4 * raw_Delta4) * 90 + 10;
   vector<lower=0, upper=10>[C]   k      = inv_logit(mu_k + sigma_k * raw_k) * 10;
@@ -116,7 +116,7 @@ transformed parameters {
   vector<lower=0>[n_shocks] truncated_local_shrinkage; // called lambda_tilde in paper
   
   {
-    truncated_local_shrinkage = sqrt(c_slab^2 * square(local_shrinkage) ./ (c_slab^2 + global_shrinkage^2 * square(local_shrinkage)));
+    truncated_local_shrinkage = sqrt(square(c_slab) * square(local_shrinkage) ./ (square(c_slab) + square(global_shrinkage) * square(local_shrinkage)));
     vector[n_shocks] shock_shrinkage = shock_raw .* truncated_local_shrinkage * global_shrinkage;
     
     for(c in 1:C) {
@@ -143,7 +143,7 @@ model {
   raw_z      ~ std_normal();
   
   inv_logit(mu_Delta1) * 100 ~ normal(15.77, 10) T[0, 100];
-  inv_logit(mu_Delta2) * 70 + 30 ~ normal(40.97, 10) T[30, 100];
+  inv_logit(mu_Delta2) * 80 + 20 ~ normal(40.97, 10) T[20, 100];
   inv_logit(mu_Delta3) * 100 ~ normal(0.21, 10) T[0, 100];
   inv_logit(mu_Delta4) * 90 + 10 ~ normal(19.82, 10) T[10, 100];
   inv_logit(mu_k) * 10 ~ normal(2.93, 5) T[0, 10];

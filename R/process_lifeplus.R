@@ -18,23 +18,32 @@ process_life_fit <- function(fit, parallel_chains = NULL) {
   else {
     temporal_variables <- c("eta", "eta_crisisfree", "shock2")
     
-    temporal <- tidybayes::gather_draws(fit$samples$draws(temporal_variables), eta[rep, c, t], eta_crisisfree[rep, c, t], shock2[rep, c, t]) |>
-      group_by(.variable, c, t) |>
-      summarize(`0.1%`  = quantile(.value, 0.001),
-                `1%`    = quantile(.value, 0.01),
-                `2.5%`  = quantile(.value, 0.025),
-                `10%`   = quantile(.value, 0.1),
-                `25%`   = quantile(.value, 0.25),
-                `50%`   = quantile(.value, 0.5),
-                `75%`   = quantile(.value, 0.75),
-                `90%`   = quantile(.value, 0.90),
-                `95%`   = quantile(.value, 0.95),
-                `97.5%` = quantile(.value, 0.975),
-                `99%`   = quantile(.value, 0.99),
-                `99.9%` = quantile(.value, 0.999)) |>
+    temporal <- fit$samples$summary(temporal_variables, ~stats::quantile(.x, probs = c(0.001, 0.01, 0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975, 0.99, 0.999)), .cores = parallel_chains) |>
+      tidyr::separate(.data$variable, c("variable", "index"), "\\[") |>
+      dplyr::mutate(index = stringr::str_replace_all(.data$index, "\\]", "")) |>
+      tidyr::separate(.data$index, c("c", "t"), ",") |>
+      dplyr::mutate_at(vars(c, t), as.integer) |>
       dplyr::left_join(fit$country_index, by = "c") |>
-      dplyr::left_join(fit$time_index, by = "t") |>
-      rename(variable = .variable)
+      dplyr::left_join(fit$time_index, by = "t")
+
+    
+    #temporal <- tidybayes::gather_draws(fit$samples$draws(temporal_variables), eta[rep, c, t], eta_crisisfree[rep, c, t], shock2[rep, c, t]) |>
+    #  group_by(.variable, c, t) |>
+    #  summarize(`0.1%`  = quantile(.value, 0.001),
+    #            `1%`    = quantile(.value, 0.01),
+    #            `2.5%`  = quantile(.value, 0.025),
+    #            `10%`   = quantile(.value, 0.1),
+    #            `25%`   = quantile(.value, 0.25),
+    #            `50%`   = quantile(.value, 0.5),
+    #            `75%`   = quantile(.value, 0.75),
+    #            `90%`   = quantile(.value, 0.90),
+    #            `95%`   = quantile(.value, 0.95),
+    #            `97.5%` = quantile(.value, 0.975),
+    #            `99%`   = quantile(.value, 0.99),
+    #            `99.9%` = quantile(.value, 0.999)) |>
+    #  dplyr::left_join(fit$country_index, by = "c") |>
+    #  dplyr::left_join(fit$time_index, by = "t") |>
+    #  rename(variable = .variable)
   }
   
   #

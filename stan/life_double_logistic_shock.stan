@@ -58,7 +58,7 @@ transformed data {
   }
 }
 parameters {
-  real<lower=0> log_epsilon_scale;
+  real log_epsilon_scale;
   
   vector<lower=-5, upper=5>[C] raw_Delta1;
   vector<lower=-5, upper=5>[C] raw_Delta2;

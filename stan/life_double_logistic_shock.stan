@@ -180,17 +180,22 @@ model {
 generated quantities {
   matrix[C, Tpred] eta;
   matrix[C, Tpred] eta_crisisfree;
+  matrix[C, Tpred] shock2;
   matrix[C, num_grid] transition_function_pred;
   
   eta[1:C, 1:T] = y;
   eta_crisisfree[1:C, 1:T] = y;
+  shock2[1:C, 1:T] = shock;
   
   for(t in T:Tpred) {
-    vector[C] transition = rate_double_logistic(eta[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
+    for(c in 1:C) {
+      shock2[c, t] = shock_rng(nu_local, c_slab, global_shrinkage);
+    }
+    
+    vector[C] transition = rate_double_logistic(eta[, t - 1] - shock2[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
     for(c in 1:C) {
       real error = normal_rng(0, epsilon_scale);
-      real shock_pred = shock_rng(nu_local, c_slab, global_shrinkage);
-      eta[c, t] = eta[c, t - 1] + transition[c] + error + shock_pred;
+      eta[c, t] = eta[c, t - 1] + transition[c] + error + shock2[c, t] - shock2[c, t - 1];
     }
     
     vector[C] transition_crisisfree = rate_double_logistic(eta_crisisfree[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);

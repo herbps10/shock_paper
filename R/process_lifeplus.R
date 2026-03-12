@@ -18,7 +18,7 @@ process_life_fit <- function(fit, parallel_chains = NULL) {
   }
   else {
     #temporal_variables <- c("eta", "eta_crisisfree", "neg_shock2", "pos_shock2")
-    temporal_variables <- c("eta", "eta_crisisfree", "pos_shock2")
+    temporal_variables <- c("eta", "eta_crisisfree", "shock2")
     
     temporal <- fit$samples$summary(temporal_variables, ~stats::quantile(.x, probs = c(0.001, 0.01, 0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975, 0.99, 0.999)), .cores = parallel_chains) |>
       mutate_at(vars(ends_with("%")), as.numeric) |>

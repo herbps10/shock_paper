@@ -67,13 +67,20 @@ transformed data {
       }
     }
   }
+
+  real Delta1_lower = 0; real Delta1_upper = 30; real Delta1_range = Delta1_upper - Delta1_lower;
+  real Delta2_lower = 25; real Delta2_upper = 50; real Delta2_range = Delta2_upper - Delta2_lower;
+  real Delta3_lower = 0; real Delta3_upper = 10; real Delta3_range = Delta3_upper - Delta3_lower;
+  real Delta4_lower = 5; real Delta4_upper = 30; real Delta4_range = Delta4_upper - Delta4_lower;
+  real k_lower = 0; real k_upper = 10; real k_range = k_upper - k_lower;
+  real z_lower = 0; real z_upper = 1.15; real z_range = z_upper - z_lower;
   
-  real prior_mu_Delta1 = logit(15.77 / 100);
-  real prior_mu_Delta2 = logit(40.97 / 100);
-  real prior_mu_Delta3 = logit(0.21 / 100);
-  real prior_mu_Delta4 = logit((19.82 - 10) / 90);
-  real prior_mu_k      = logit(2.93 / 10);
-  real prior_mu_z      = logit(0.4 / 1.15);
+  real prior_mu_Delta1 = logit((15.77 - Delta1_lower) / Delta1_range);
+  real prior_mu_Delta2 = logit((40.97 - Delta2_lower) / Delta1_range);
+  real prior_mu_Delta3 = logit(( 0.21 - Delta3_lower) / Delta3_range);
+  real prior_mu_Delta4 = logit((19.82 - Delta4_lower) / Delta4_range);
+  real prior_mu_k      = logit((2.93 - k_lower) / k_range);
+  real prior_mu_z      = logit(( 0.4 - z_lower) / z_range);
 }
 parameters {
   //real log_epsilon_variance;
@@ -107,12 +114,12 @@ parameters {
   array[hierarchical] real<lower=0.01, upper=1> sigma_k;
   array[hierarchical] real<lower=0.01, upper=1> sigma_z;
   
-  array[1 - hierarchical] vector<lower=10, upper=100>[C]  constrained_Delta1;
-  array[1 - hierarchical] vector<lower=25, upper=100>[C]  constrained_Delta2;
-  array[1 - hierarchical] vector<lower=0, upper=100>[C]  constrained_Delta3;
-  array[1 - hierarchical] vector<lower=10, upper=100>[C]  constrained_Delta4;
-  array[1 - hierarchical] vector<lower=0, upper=10>[C]   constrained_k;
-  array[1 - hierarchical] vector<lower=0, upper=1.15>[C] constrained_z;
+  array[1 - hierarchical] vector<lower=Delta1_lower, upper=Delta1_upper>[C] constrained_Delta1;
+  array[1 - hierarchical] vector<lower=Delta2_lower, upper=Delta2_upper>[C] constrained_Delta2;
+  array[1 - hierarchical] vector<lower=Delta3_lower, upper=Delta3_upper>[C] constrained_Delta3;
+  array[1 - hierarchical] vector<lower=Delta4_lower, upper=Delta4_upper>[C] constrained_Delta4;
+  array[1 - hierarchical] vector<lower=k_lower, upper=k_upper>[C] constrained_k;
+  array[1 - hierarchical] vector<lower=z_lower, upper=z_upper>[C] constrained_z;
   
   vector[n_shocks] shock_raw;
   vector<lower=0>[n_shocks] lambda;
@@ -133,20 +140,20 @@ transformed parameters {
  
   if(hierarchical) {
     if(centered) {
-      Delta1 = inv_logit(Delta1_logit[1]) * 90 + 10;
-      Delta2 = inv_logit(Delta2_logit[1]) * 75 + 25;
-      Delta3 = inv_logit(Delta3_logit[1]) * 100;
-      Delta4 = inv_logit(Delta4_logit[1]) * 90 + 10;
-      k      = inv_logit(k_logit[1]) * 10;
-      z      = inv_logit(z_logit[1]) * 1.15;
+      Delta1 = inv_logit(Delta1_logit[1]) * Delta1_range + Delta1_lower;
+      Delta2 = inv_logit(Delta2_logit[1]) * Delta2_range + Delta2_lower;
+      Delta3 = inv_logit(Delta3_logit[1]) * Delta3_range + Delta3_lower;
+      Delta4 = inv_logit(Delta4_logit[1]) * Delta4_range + Delta4_lower;
+      k      = inv_logit(k_logit[1]) * k_range + k_lower;
+      z      = inv_logit(z_logit[1]) * z_range + z_lower;
     }
     else {
-      Delta1 = inv_logit(mu_Delta1[1] + sigma_Delta1[1] * raw_Delta1[1]) * 90 + 10;
-      Delta2 = inv_logit(mu_Delta2[1] + sigma_Delta2[1] * raw_Delta2[1]) * 75 + 25;
-      Delta3 = inv_logit(mu_Delta3[1] + sigma_Delta3[1] * raw_Delta3[1]) * 100;
-      Delta4 = inv_logit(mu_Delta4[1] + sigma_Delta4[1] * raw_Delta4[1]) * 90 + 10;
-      k      = inv_logit(mu_k[1] + sigma_k[1] * raw_k[1]) * 10;
-      z      = inv_logit(mu_z[1] + sigma_z[1] * raw_z[1]) * 1.15;
+      Delta1 = inv_logit(mu_Delta1[1] + sigma_Delta1[1] * raw_Delta1[1]) * Delta1_range + Delta1_lower; 
+      Delta2 = inv_logit(mu_Delta2[1] + sigma_Delta2[1] * raw_Delta2[1]) * Delta2_range + Delta2_lower; 
+      Delta3 = inv_logit(mu_Delta3[1] + sigma_Delta3[1] * raw_Delta3[1]) * Delta3_range + Delta3_lower; 
+      Delta4 = inv_logit(mu_Delta4[1] + sigma_Delta4[1] * raw_Delta4[1]) * Delta4_range + Delta4_lower; 
+      k      = inv_logit(mu_k[1] + sigma_k[1] * raw_k[1]) * z_range + z_lower;
+      z      = inv_logit(mu_z[1] + sigma_z[1] * raw_z[1]) * k_range + k_lower;
     }
   }
   else {

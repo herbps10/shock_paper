@@ -31,25 +31,38 @@ index <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 
 fits <- expand_grid(
   scale_global = 1e-2,
-  model = "logistic_shock",
-  outlier_threshold = 1e3
+  model = c("logistic_shock", "logistic"),
+  outlier_threshold = c(5, 1e3),
+  centered = c(TRUE, FALSE),
+  hierarchical = c(FALSE),
+  config = c("low")
 ) |>
-  bind_rows(
-    tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5),
-    tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3)
-  )
+  filter(!(model == "logistic_shock" & outlier_threshold == 5)) |>
+  filter(!(hierarchical == FALSE & centered == TRUE))
 
 fits <- fits[index, ]
 
-random_countries <- sample(unique(datM$name), 50)
-print(random_countries)
-datM <- datM |> filter(name %in% random_countries)
+#random_countries <- sample(unique(datM$name), 50)
+#print(random_countries)
+#datM <- datM |> filter(name %in% random_countries)
 
 print(glue::glue("Starting index {index} with {nrow(datM)} rows for {length(unique(datM$name))} countries"))
 
 
 fits <- fits |>
-  mutate(fit = pmap(list(scale_global, model, outlier_threshold), function(scale_global, model, outlier_threshold) {
+  mutate(fit = pmap(list(scale_global, model, outlier_threshold, centered, config), function(scale_global, model, outlier_threshold, centered, config) {
+    if(config == "high") {
+       adapt_delta <- 0.99
+       max_treedepth <- 14
+      iter_warmup <- 500
+      iter_sampling <- 500
+    }
+    else {
+      adapt_delta <- 0.95
+      max_treedepth <- 10
+      iter_warmup <- 250
+      iter_sampling <- 250
+    }
     lifeplus(
       datM,
       y = "e0", 
@@ -61,16 +74,19 @@ fits <- fits |>
 
       outlier_threshold = outlier_threshold,
       
+      hierarchical = hierarchical,
+      centered = centered,
+      
       model = model,
       
-      adapt_delta = 0.95,
-      max_treedepth = 12,
+      adapt_delta = adapt_delta,
+      max_treedepth = max_treedepth,
 
       parallel_chains = 8,
       chains = 8,
 
-      iter_warmup = 100,
-      iter_sampling = 200,
+      iter_warmup = iter_warmup,
+      iter_sampling = iter_sampling,
       
       output_dir = "/gpfs/scratch/susmah01/shock_paper/draws/",
       

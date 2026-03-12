@@ -170,12 +170,7 @@ lifeplus <- function(
   
   t_last <- max(data$t)
   
-  # Set up hierarchical structures
-  #a_data       <- BayesTransitionModels:::hierarchical_data(country_index, hierarchical_splines)
-  
   # Set up spline basis
-  #knots <- sort(c(seq(0, (max(data[[y]]) - 15) / (110 - 15), length.out = num_knots), 1, 2))
-  #knots <- c((c(15, 30, 45, 50, 55, 60, 65, 70, 75, 80, 85) - 15) / (85 - 15), 1000)
   if(model == "logistic" || model == "logistic_shock") {
     grid <- c(seq(from = 0, to = 110, by = 5)) # generating inputs
   }
@@ -183,14 +178,6 @@ lifeplus <- function(
     grid <- c(seq(from = 0, to = 1, by = .05)) # generating inputs
   }
   num_grid <- length(grid)
-  
-  #B <- t(bs(grid, knots = knots, degree = spline_degree, intercept = FALSE))
-  #B <- B[1:(nrow(B) - 1), ]
-  #num_basis <- nrow(B)
-  #ext_knots <- c(rep(knots[1], spline_degree), knots, rep(knots[length(knots)], spline_degree))
-  
-  #a_lower_bound <- 0.01
-  #a_upper_bound <- 10 
   
   if(length(held_out) == 1 && held_out == FALSE) {
     obs <- data |> select(t, c, e0) |> pivot_wider(names_from = "t", values_from = "e0") |> select(-c) |> as.matrix()

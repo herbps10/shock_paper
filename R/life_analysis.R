@@ -84,12 +84,13 @@ threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 # How many of the observed differences fall below this threshold?
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
-set.seed(2)
-random_countries <- sample(unique(datM$name), 25)
+set.seed(4)
+random_countries <- sample(unique(datM$name), 20)
+random_countries <- unique(c(random_countries, c("Republic of Korea", "Dem. People's Republic of Korea", "Bangladesh", "Lebanon", "Somalia")))
 
 fits <- expand_grid(
   #scale_global = c(1e-3, 1e-2, 1e-1),
-  scale_global = 1e-2,
+  scale_global = 1e-3,
   #model = c("shock2")
   model = "logistic_shock",
   outlier_threshold = 1e3
@@ -115,7 +116,7 @@ fits <- expand_grid(
       
       model = model,
       
-      adapt_delta = 0.95,
+      adapt_delta = 0.9,
       max_treedepth = 12,
       parallel_chains = 4,
       iter_warmup = 250,
@@ -130,14 +131,7 @@ fits <- expand_grid(
     )
   }))
 
-BayesTransitionModels::plot_indicator(fits$fit[[1]], areas = "Timor-Leste")
-
-#
-#name <- "Algeria"
-#BayesTransitionModels:::plot_temporal("eta", fit, name)
-#BayesTransitionModels:::plot_temporal("eta", fits_with_shocks$fit[[1]], name)
-#BayesTransitionModels:::plot_temporal("eta_crisisfree", fits_with_shocks$fit[[1]], name)
-#plot_shock(fits_with_shocks$fit[[1]], name)
+fit_shock <- fits$fit[[1]]
 
 fit <- fits$fit[[1]]
 tidybayes::spread_draws(fit$samples, Delta1[c]) |> 
@@ -151,26 +145,75 @@ tidybayes::spread_draws(fit$samples, Delta1[c]) |>
 bayesplot::mcmc_dens(fits$fit[[1]]$samples$draws(c("sigma_Delta1", "sigma_Delta2", "sigma_Delta3", "sigma_Delta4", "sigma_z", "sigma_k", "epsilon_scale")))
 bayesplot::mcmc_dens(fits$fit[[2]]$samples$draws(c("mu_Delta1", "mu_Delta2", "mu_Delta3", "mu_Delta4", "mu_z", "mu_k", "epsilon_scale")))
 
-fit_shock <- fits$fit[[1]]
+fit_shock   <- fits$fit[[1]]
 fit_noshock <- fits$fit[[2]]
 
-Delta_shock <- spread_draws(fit_shock$samples$draws(c("Delta1", "Delta2", "Delta3", "Delta4", "k", "z")), Delta1[c], Delta2[c], Delta3[c], Delta4[c], k[c], z[c])
-Delta_noshock <- spread_draws(fit_noshock$samples$draws(c("Delta1", "Delta2", "Delta3", "Delta4", "k", "z")), Delta1[c], Delta2[c], Delta3[c], Delta4[c], k[c], z[c])
+left_join(
+  fit_shock$posteriors$transition_functions |> filter(.width == 0.5) |> select(name, x, transition_function_pred),
+  fit_noshock$posteriors$transition_functions |> filter(.width == 0.5) |> select(name, x, transition_function_pred),
+  by = c("name", "x")
+) |>
+  group_by(name) |>
+  summarize(diff = sum(abs(transition_function_pred.x - transition_function_pred.y))) |>
+  arrange(diff)
+  
+
+Delta_shock <- gather_draws(fit_shock$samples$draws(c("Delta1", "Delta2", "Delta3", "Delta4", "k", "z")), Delta1[c], Delta2[c], Delta3[c], Delta4[c], k[c], z[c])
+Delta_noshock <- gather_draws(fit_noshock$samples$draws(c("Delta1", "Delta2", "Delta3", "Delta4", "k", "z")), Delta1[c], Delta2[c], Delta3[c], Delta4[c], k[c], z[c])
+
+left_join(
+  Delta_shock  |>
+    group_by(c, .variable) |>
+    median_qi() |>
+    mutate(model = "shock") |>
+    select(c, .variable, .value, .lower, .upper, model),
+  Delta_noshock  |>
+    group_by(c, .variable) |>
+    median_qi() |>
+    mutate(model = "no shock") |>
+    select(c, .variable, .value, .lower, .upper, model)
+  , by = c(".variable", "c")
+) |>
+  left_join(fit_shock$country_index) |>
+  ggplot(aes(y = name)) +
+  geom_pointinterval(aes(x = .value.x, xmin = .lower.x, xmax = .upper.x, color = "Shock")) +
+  geom_pointinterval(aes(x = .value.y, xmin = .lower.y, xmax = .upper.y, color = "No Shock")) +
+  scale_fill_brewer() +
+  facet_wrap(~.variable, scales = "free_x")
 
 (Delta_shock |> median_qi()) |> left_join(Delta_noshock |> median_qi(), by = "c") |> left_join(fit_shock$country_index)  |>
   select(name, Delta1.x, Delta1.y, Delta2.x, Delta2.y, Delta3.x, Delta3.y, Delta4.x, Delta4.y, k.x, k.y, z.x, z.y)
 
+name <- "Republic of Korea"
 name <- random_countries
 plot_transition(fit_noshock_naive, name)
-plot_transition(fit_noshock, name)
-plot_transition(fit_shock, name)
-plot_shock(fit_shock, name)
+plot_transition(fit_noshock, name) + ylim(c(0, 30))
+plot_transition(fit_shock, name) + ylim(c(0, 30))
+plot_shock(fit_shock, name, "pos")
+plot_shock(fit_shock, name, "neg")
 
 plot_temporal("eta", fit_noshock, name, plot_data = TRUE) + ylim(c(15, 150))
 plot_temporal("eta", fit_shock, name, plot_data = TRUE) + ylim(c(15, 150))
 plot_temporal("eta_crisisfree", fit_shock, name, plot_data = TRUE) + ylim(c(15, 150))
 
 fit_shock$posteriors$temporal |> filter(year == 2100) |> mutate(ci_width = `99.9%` - `0.1%`)
+
+comp <- left_join(
+  fit_shock$posteriors$temporal |> filter(year == 2100, variable == "eta_crisisfree") |> mutate(ci_width = `90%` - `10%`) |> select(name, `50%`, ci_width),
+  fit_noshock$posteriors$temporal |> filter(year == 2100, variable == "eta") |> mutate(ci_width = `90%` - `10%`) |> select(name, `50%`, ci_width)
+ , by = c("name"))
+
+comp |> filter(ci_width.x > ci_width.y)
+
+comp |>
+  ggplot(aes(x = `ci_width.y`, y = `ci_width.x`)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0)
+
+comp |>
+  ggplot(aes(x = `50%.x`, y = `50%.y`)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0)
 
 bind_rows(
   fit_noshock$posteriors$temporal |> filter(year == 2100) |> mutate(ci_width = `90%` - `10%`) |>

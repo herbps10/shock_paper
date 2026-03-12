@@ -6,7 +6,16 @@ functions {
   }
   
   real inv_logit_adjustment(real x) {
-    return x - 2 * log(exp(x) + 1);
+    return x - 2 * log1p_exp(x);
+  }
+  
+  vector rep_vector_times(vector x, int times) {
+    int s = size(x);
+    vector[s  * times] y;
+    for(i in 1:times) {
+      y[((i - 1) * s + 1):(i * s)] = x;
+    }
+    return y;
   }
 }
 
@@ -44,19 +53,19 @@ transformed data {
 parameters {
   real log_epsilon_scale;
   
-  vector<lower=-5, upper=5>[C] raw_Delta1;
-  vector<lower=-5, upper=5>[C] raw_Delta2;
-  vector<lower=-5, upper=5>[C] raw_Delta3;
-  vector<lower=-5, upper=5>[C] raw_Delta4;
-  vector<lower=-5, upper=5>[C] raw_k;
-  vector<lower=-5, upper=5>[C] raw_z;
+  vector[C] raw_Delta1;
+  vector[C] raw_Delta2;
+  vector[C] raw_Delta3;
+  vector[C] raw_Delta4;
+  vector[C] raw_k;
+  vector[C] raw_z;
   
-  real<lower=-5, upper=5> mu_Delta1;
-  real<lower=-5, upper=5> mu_Delta2;
-  real<lower=-5, upper=5> mu_Delta3;
-  real<lower=-5, upper=5> mu_Delta4;
-  real<lower=-5, upper=5> mu_k;
-  real<lower=-5, upper=5> mu_z;
+  real mu_Delta1;
+  real mu_Delta2;
+  real mu_Delta3;
+  real mu_Delta4;
+  real mu_k;
+  real mu_z;
   
   real<lower=0.01, upper=5> sigma_Delta1;
   real<lower=0.01, upper=5> sigma_Delta2;
@@ -78,15 +87,22 @@ transformed parameters {
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
   
   vector<lower=0, upper=100>[C]  Delta1 = inv_logit(mu_Delta1 + sigma_Delta1 * raw_Delta1) * 100;
-  vector<lower=30, upper=100>[C]  Delta2 = inv_logit(mu_Delta2 + sigma_Delta2 * raw_Delta2) * 70 + 30;
+  vector<lower=0, upper=100>[C]  Delta2 = inv_logit(mu_Delta2 + sigma_Delta2 * raw_Delta2) * 100;
   vector<lower=0, upper=100>[C]  Delta3 = inv_logit(mu_Delta3 + sigma_Delta3 * raw_Delta3) * 100;
   vector<lower=10, upper=100>[C] Delta4 = inv_logit(mu_Delta4 + sigma_Delta4 * raw_Delta4) * 90 + 10;
   vector<lower=0, upper=10>[C]   k      = inv_logit(mu_k + sigma_k * raw_k) * 10;
   vector<lower=0, upper=1.15>[C] z      = inv_logit(mu_z + sigma_z * raw_z) * 1.15;
   
-  for(t in 2:T) {
-    transition_function[, t - 1] = rate_double_logistic(y[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
-  }
+  transition_function = to_matrix(
+    rate_double_logistic(
+      to_vector(y[, 1:(T - 1)]),
+      rep_vector_times(Delta1, T - 1),
+      rep_vector_times(Delta2, T - 1),
+      rep_vector_times(Delta3, T - 1),
+      rep_vector_times(Delta4, T - 1),
+      rep_vector_times(k, T - 1),
+      rep_vector_times(z, T - 1)
+    ), C, T - 1);
 }
 
 model {
@@ -101,12 +117,12 @@ model {
   raw_k      ~ std_normal();
   raw_z      ~ std_normal();
   
-  inv_logit(mu_Delta1) * 100 ~ normal(15.77, 10) T[0, 100];
-  inv_logit(mu_Delta2) * 70 + 30~ normal(40.97, 10) T[30, 100];
-  inv_logit(mu_Delta3) * 100 ~ normal(0.21, 10) T[0, 100];
-  inv_logit(mu_Delta4) * 90 + 10 ~ normal(19.82, 10) T[10, 100];
-  inv_logit(mu_k) * 10 ~ normal(2.93, 5) T[0, 10];
-  inv_logit(mu_z) * 1.15 ~ normal(0.4, 0.5) T[0, 1.15];
+  inv_logit(mu_Delta1) * 100 ~ normal(15.77, 10);
+  inv_logit(mu_Delta2) * 100 ~ normal(40.97, 10);
+  inv_logit(mu_Delta3) * 100 ~ normal(0.21, 10);
+  inv_logit(mu_Delta4) * 90 + 10 ~ normal(19.82, 10);
+  inv_logit(mu_k) * 10 ~ normal(2.93, 5);
+  inv_logit(mu_z) * 1.15 ~ normal(0.4, 0.5);
   
   target += inv_logit_adjustment(mu_Delta1);
   target += inv_logit_adjustment(mu_Delta2);

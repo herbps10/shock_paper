@@ -88,7 +88,6 @@ set.seed(4)
 random_countries <- sample(unique(datM$name), 20)
 random_countries <- unique(c(random_countries, c("Republic of Korea", "Dem. People's Republic of Korea", "Bangladesh", "Lebanon", "Somalia")))
 random_countries <- c("Republic of Korea", "Dem. People's Republic of Korea", "Bangladesh", "Lebanon", "Somalia")
-
 fits <- expand_grid(
   #scale_global = c(1e-3, 1e-2, 1e-1),
   scale_global = 1e-2,
@@ -119,7 +118,7 @@ fits <- expand_grid(
       
       model = model,
       
-      adapt_delta = 0.99,
+      adapt_delta = 0.95,
       max_treedepth = 14,
       parallel_chains = 4,
       iter_warmup = 250,

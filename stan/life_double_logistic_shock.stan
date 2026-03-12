@@ -5,11 +5,11 @@ functions {
     return k .* inv(1 + exp(-A1 .* inv(Delta2) .* (x - Delta1 - A2 * Delta2))) + (z - k) .* inv(1 + exp(-A1 * inv(Delta4) .* (x - Delta1 - Delta2 - Delta3 - A2 * Delta4)));
   }
   
-  real shock_rng(real nu_local, real c_slab, real global_shrinkage) {
+  real shock_rng(real nu_local, real c_slab, real tau) {
     real shock_raw_pred = normal_rng(0, 1);
     real local_shrinkage_pred = student_t_rng(nu_local, 0, 1);
-    real truncated_local_shrinkage_pred = sqrt(square(c_slab) * square(local_shrinkage_pred) ./ (square(c_slab) + square(global_shrinkage) * square(local_shrinkage_pred)));
-    return shock_raw_pred * truncated_local_shrinkage_pred * global_shrinkage;
+    real truncated_local_shrinkage_pred = sqrt(square(c_slab) * square(local_shrinkage_pred) ./ (square(c_slab) + square(tau) * square(local_shrinkage_pred)));
+    return shock_raw_pred * truncated_local_shrinkage_pred * tau;
   } 
   
   real inv_logit_adjustment(real x) {
@@ -100,8 +100,8 @@ parameters {
   array[1 - hierarchical] vector<lower=0, upper=1.15>[C] constrained_z;
   
   vector[n_shocks] shock_raw;
-  vector<lower=0>[n_shocks] local_shrinkage;
-  real<lower=0> global_shrinkage_raw;
+  vector<lower=0>[n_shocks] lambda;
+  real<lower=0> tau;
   real<lower=0> caux;
 }
 
@@ -134,10 +134,9 @@ transformed parameters {
   }
   
   matrix[C, T - 1] shock = rep_matrix(0, C, T - 1);
-  real<lower=0> global_shrinkage = global_shrinkage_raw * scale_global; // * epsilon_scale;
   real<lower=0> c_slab = slab_scale * sqrt(caux);
-  vector<lower=0>[n_shocks] truncated_local_shrinkage = sqrt(square(c_slab) * square(local_shrinkage) ./ (square(c_slab) + square(global_shrinkage) * square(local_shrinkage)));; 
-  shock = to_matrix(shock_raw .* truncated_local_shrinkage * global_shrinkage, C, T - 1);
+  vector<lower=0>[n_shocks] lambda_tilde = sqrt(c_slab^2 * square (lambda) ./ (c_slab^2 + tau^2 * square(lambda)));
+  shock = to_matrix(shock_raw .* lambda_tilde * tau, C, T - 1);
   
   transition_function = to_matrix(
     rate_double_logistic(
@@ -189,8 +188,8 @@ model {
   
   shock_raw ~ std_normal();
   caux ~ inv_gamma(0.5 * slab_df, 0.5 * slab_df);
-  local_shrinkage ~ cauchy(0, 1);
-  global_shrinkage_raw ~ cauchy(0, 1);
+  lambda ~ student_t(nu_local, 0, 1);
+  tau ~ student_t(nu_global, 0, scale_global);
   
   if(outlier_threshold < 1000) {
     diff[indices_below_threshold] ~ normal(to_vector(transition_function)[indices_below_threshold], sqrt(epsilon_scale));
@@ -213,7 +212,7 @@ generated quantities {
   
   for(t in T:(Tpred)) {
     for(c in 1:C) {
-      shock2[c, t - 1] = shock_rng(nu_local, c_slab, global_shrinkage);
+      shock2[c, t - 1] = shock_rng(nu_local, c_slab, tau);
     }
     
     vector[C] transition = rate_double_logistic(eta[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);

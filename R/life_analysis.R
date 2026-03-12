@@ -100,8 +100,8 @@ fits <- expand_grid(
 ) |>
   bind_rows(
     #tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
-    #tibble(scale_global = 1e-2, model = "logistic_shock", outlier_threshold = 1e3)
-    tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
+    tibble(scale_global = 1e-2, model = "logistic_shock", outlier_threshold = 1e3)
+    #tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
   ) |>
   mutate(fit = pmap(list(scale_global, model, outlier_threshold), function(scale_global, model, outlier_threshold) {
     lifeplus(
@@ -114,7 +114,7 @@ fits <- expand_grid(
       end_year = 2100,
       
       hierarchical = TRUE,
-      centered = TRUE,
+      centered = FALSE,
       
       outlier_threshold = outlier_threshold,
       
@@ -188,11 +188,11 @@ left_join(
 (Delta_shock |> median_qi()) |> left_join(Delta_noshock |> median_qi(), by = "c") |> left_join(fit_shock$country_index)  |>
   select(name, Delta1.x, Delta1.y, Delta2.x, Delta2.y, Delta3.x, Delta3.y, Delta4.x, Delta4.y, k.x, k.y, z.x, z.y)
 
-name <- "Afghanistan"
+name <- "Lebanon"
 name <- random_countries
 plot_transition(fit_noshock_naive, name)
-plot_transition(fit_noshock) + ylim(c(0, 10))
-plot_transition(fit_shock) + ylim(c(0, 10))
+plot_transition(fit_noshock, name) + ylim(c(0, 10))
+plot_transition(fit_shock, name) + ylim(c(0, 10))
 plot_shock(fit_shock)
 
 plot_temporal("eta", fit_noshock, plot_data = TRUE) + ylim(c(15, 150))
@@ -202,7 +202,7 @@ plot_temporal("eta", fit_shock, plot_data = TRUE) + ylim(c(15, 150))
 fit_shock$posteriors$temporal |> filter(year == 2100) |> mutate(ci_width = `99.9%` - `0.1%`)
 
 comp <- left_join(
-  fit_shock$posteriors$temporal |> filter(year == 2100, variable == "eta") |> mutate(ci_width = `90%` - `10%`) |> select(name, `50%`, ci_width),
+  fit_shock$posteriors$temporal |> filter(year == 2100, variable == "eta_crisisfree") |> mutate(ci_width = `90%` - `10%`) |> select(name, `50%`, ci_width),
   fit_noshock$posteriors$temporal |> filter(year == 2100, variable == "eta") |> mutate(ci_width = `90%` - `10%`) |> select(name, `50%`, ci_width)
  , by = c("name"))
 

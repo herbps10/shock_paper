@@ -91,8 +91,8 @@ parameters {
   array[hierarchical] real<lower=0.01, upper=1> sigma_k;
   array[hierarchical] real<lower=0.01, upper=1> sigma_z;
   
-  array[1 - hierarchical] vector<lower=0, upper=100>[C]  constrained_Delta1;
-  array[1 - hierarchical] vector<lower=0, upper=100>[C]  constrained_Delta2;
+  array[1 - hierarchical] vector<lower=10, upper=100>[C]  constrained_Delta1;
+  array[1 - hierarchical] vector<lower=25, upper=100>[C]  constrained_Delta2;
   array[1 - hierarchical] vector<lower=0, upper=100>[C]  constrained_Delta3;
   array[1 - hierarchical] vector<lower=10, upper=100>[C]  constrained_Delta4;
   array[1 - hierarchical] vector<lower=0, upper=10>[C]   constrained_k;
@@ -103,25 +103,25 @@ transformed parameters {
   //real epsilon_variance = exp(log_epsilon_variance);
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
   
-  vector<lower=0, upper=100>[C] Delta1; 
-  vector<lower=0, upper=100>[C] Delta2;
-  vector<lower=0, upper=100>[C] Delta3;
-  vector<lower=10, upper=100>[C] Delta4;
-  vector<lower=0, upper=10>[C] k;
-  vector<lower=0, upper=1.15>[C] z; 
+  vector[C] Delta1; 
+  vector[C] Delta2;
+  vector[C] Delta3;
+  vector[C] Delta4;
+  vector[C] k;
+  vector[C] z; 
   
   if(hierarchical) {
     if(centered) {
-      Delta1 = inv_logit(Delta1_logit[1]) * 100;
-      Delta2 = inv_logit(Delta2_logit[1]) * 100;
+      Delta1 = inv_logit(Delta1_logit[1]) * 90 + 10;
+      Delta2 = inv_logit(Delta2_logit[1]) * 75 + 25;
       Delta3 = inv_logit(Delta3_logit[1]) * 100;
       Delta4 = inv_logit(Delta4_logit[1]) * 90 + 10;
       k      = inv_logit(k_logit[1]) * 10;
       z      = inv_logit(z_logit[1]) * 1.15;
     }
     else {
-      Delta1 = inv_logit(mu_Delta1[1] + sigma_Delta1[1] * raw_Delta1[1]) * 100;
-      Delta2 = inv_logit(mu_Delta2[1] + sigma_Delta2[1] * raw_Delta2[1]) * 100;
+      Delta1 = inv_logit(mu_Delta1[1] + sigma_Delta1[1] * raw_Delta1[1]) * 90 + 10;
+      Delta2 = inv_logit(mu_Delta2[1] + sigma_Delta2[1] * raw_Delta2[1]) * 75 + 25;
       Delta3 = inv_logit(mu_Delta3[1] + sigma_Delta3[1] * raw_Delta3[1]) * 100;
       Delta4 = inv_logit(mu_Delta4[1] + sigma_Delta4[1] * raw_Delta4[1]) * 90 + 10;
       k      = inv_logit(mu_k[1] + sigma_k[1] * raw_k[1]) * 10;

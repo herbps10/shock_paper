@@ -12,7 +12,6 @@ library(splines)
 #' @param model which model to fit. Currently only "spline" is supported.
 #' @param num_knots number of spline knots.
 #' @param spline_degree spline degree. Degree 2 or 3 is supported.
-#' @param hierarchical_splines vector specifying hierarchical structure for spline coefficients (see Details).
 #' @param held_out binary vector indicating which observations are held out. Set to FALSE to hold out no observations.
 #' @param ... additional arguments for CmdStanModel::sample.
 #'
@@ -37,14 +36,11 @@ lifeplus <- function(
   spline_degree = 2,
   outlier_threshold = 1000,
   
-  normal_data_model = TRUE,
-  data_model_df = 5,
+  hierarchical = TRUE,
   
   country_specific_global_shrinkage = FALSE,
   
   extra_stan_data = list(),
-  
-  hierarchical_splines = c("intercept", area),
   
   # Out-of-sample validation
   held_out = FALSE,
@@ -81,10 +77,6 @@ lifeplus <- function(
   
   if(start_year > end_year) {
     stop("start_year must be less than end year")
-  }
-  
-  if(length(hierarchical_splines) == 0) {
-    stop("No hierarchical structure supplied for the spline coefficients. See the hierarchical_splines argument.")
   }
   
   # Make sure there are no NAs in supplied columns
@@ -133,20 +125,8 @@ lifeplus <- function(
   # Setup data for Stan
   #
   
-  # Create district index for matching district and district index
-  hierarchical_column_names <- unique(c(
-    hierarchical_splines
-  )) |>
-    setdiff("intercept")
-  
-  # Make sure there are no NAs in any of the columns
-  #for(column in hierarchical_column_names) {
-  #  if(column == "intercept") next
-  #  BayesTransitionModels:::check_nas(data, column)
-  #}
-  
   country_index <- data |>
-    dplyr::distinct(!!! syms(hierarchical_column_names)) |>
+    dplyr::distinct(!!! syms(area)) |>
     dplyr::mutate(c = 1:n())
   
   # Create year lookup table
@@ -159,7 +139,7 @@ lifeplus <- function(
   year_by[year] = year
   data <- data |>
     dplyr::left_join(time_index, by = year_by) |>
-    dplyr::left_join(country_index, by = hierarchical_column_names)
+    dplyr::left_join(country_index, by = area)
   
   if(length(held_out) == 1 && held_out == FALSE) {
     held_out = rep(0, nrow(data))
@@ -192,6 +172,8 @@ lifeplus <- function(
     Tpred = max(time_index$t),
     
     y = obs,
+    
+    hierarchical = as.numeric(hierarchical),
     
     outlier_threshold = outlier_threshold,
     

@@ -113,11 +113,13 @@ fits <- expand_grid(
       start_year = 1950,
       end_year = 2100,
       
+      hierarchical = FALSE,
+      
       outlier_threshold = outlier_threshold,
       
       model = model,
       
-      adapt_delta = 0.95,
+      adapt_delta = 0.99,
       max_treedepth = 14,
       parallel_chains = 4,
       iter_warmup = 250,
@@ -188,10 +190,9 @@ left_join(
 name <- "Republic of Korea"
 name <- random_countries
 plot_transition(fit_noshock_naive, name)
-plot_transition(fit_noshock, name) + ylim(c(0, 30))
+plot_transition(fit_noshock) + ylim(c(0, 30))
 plot_transition(fit_shock) + ylim(c(0, 30))
 plot_shock(fit_shock)
-plot_shock(fit_shock, name, "neg")
 
 plot_temporal("eta", fit_noshock, name, plot_data = TRUE) + ylim(c(15, 150))
 plot_temporal("eta", fit_shock, plot_data = TRUE) + ylim(c(15, 150))

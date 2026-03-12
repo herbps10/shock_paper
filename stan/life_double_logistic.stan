@@ -30,6 +30,7 @@ data {
   vector[num_grid] grid;
   
   int<lower=0, upper=1> hierarchical;
+  int<lower=0, upper=1> centered;
   
   real<lower=0> outlier_threshold;
 }
@@ -51,16 +52,30 @@ transformed data {
       }
     }
   }
+  
+  real prior_mu_Delta1 = logit(15.77 / 100);
+  real prior_mu_Delta2 = logit(40.97 / 100);
+  real prior_mu_Delta3 = logit(0.21 / 100);
+  real prior_mu_Delta4 = logit((19.82 - 10) / 90);
+  real prior_mu_k      = logit(2.93 / 10);
+  real prior_mu_z      = logit(0.4 / 1.15);
 }
 parameters {
-  real<lower=0.01> epsilon_scale;
+  real<lower=0.01> epsilon_variance;
   
-  array[hierarchical] vector[C] raw_Delta1;
-  array[hierarchical] vector[C] raw_Delta2;
-  array[hierarchical] vector[C] raw_Delta3;
-  array[hierarchical] vector[C] raw_Delta4;
-  array[hierarchical] vector[C] raw_k;
-  array[hierarchical] vector[C] raw_z;
+  array[hierarchical * (1 - centered)] vector[C] raw_Delta1;
+  array[hierarchical * (1 - centered)] vector[C] raw_Delta2;
+  array[hierarchical * (1 - centered)] vector[C] raw_Delta3;
+  array[hierarchical * (1 - centered)] vector[C] raw_Delta4;
+  array[hierarchical * (1 - centered)] vector[C] raw_k;
+  array[hierarchical * (1 - centered)] vector[C] raw_z;
+  
+  array[hierarchical * centered] vector[C] Delta1_logit;
+  array[hierarchical * centered] vector[C] Delta2_logit;
+  array[hierarchical * centered] vector[C] Delta3_logit;
+  array[hierarchical * centered] vector[C] Delta4_logit;
+  array[hierarchical * centered] vector[C] k_logit;
+  array[hierarchical * centered] vector[C] z_logit;
   
   array[hierarchical] real mu_Delta1;
   array[hierarchical] real mu_Delta2;
@@ -79,29 +94,39 @@ parameters {
   array[1 - hierarchical] vector<lower=0, upper=100>[C]  constrained_Delta1;
   array[1 - hierarchical] vector<lower=0, upper=100>[C]  constrained_Delta2;
   array[1 - hierarchical] vector<lower=0, upper=100>[C]  constrained_Delta3;
-  array[1 - hierarchical] vector<lower=0, upper=100>[C]  constrained_Delta4;
+  array[1 - hierarchical] vector<lower=10, upper=100>[C]  constrained_Delta4;
   array[1 - hierarchical] vector<lower=0, upper=10>[C]   constrained_k;
   array[1 - hierarchical] vector<lower=0, upper=1.15>[C] constrained_z;
 }
 
 transformed parameters {
-  //real epsilon_scale = exp(log_epsilon_scale);
+  //real epsilon_variance = exp(log_epsilon_variance);
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
   
   vector<lower=0, upper=100>[C] Delta1; 
   vector<lower=0, upper=100>[C] Delta2;
   vector<lower=0, upper=100>[C] Delta3;
-  vector<lower=0, upper=100>[C] Delta4;
+  vector<lower=10, upper=100>[C] Delta4;
   vector<lower=0, upper=10>[C] k;
   vector<lower=0, upper=1.15>[C] z; 
   
   if(hierarchical) {
-    Delta1 = inv_logit(mu_Delta1[1] + sigma_Delta1[1] * raw_Delta1[1]) * 100;
-    Delta2 = inv_logit(mu_Delta2[1] + sigma_Delta2[1] * raw_Delta2[1]) * 100;
-    Delta3 = inv_logit(mu_Delta3[1] + sigma_Delta3[1] * raw_Delta3[1]) * 100;
-    Delta4 = inv_logit(mu_Delta4[1] + sigma_Delta4[1] * raw_Delta4[1]) * 100;
-    k      = inv_logit(mu_k[1] + sigma_k[1] * raw_k[1]) * 10;
-    z      = inv_logit(mu_z[1] + sigma_z[1] * raw_z[1]) * 1.15;
+    if(centered) {
+      Delta1 = inv_logit(Delta1_logit[1]) * 100;
+      Delta2 = inv_logit(Delta2_logit[1]) * 100;
+      Delta3 = inv_logit(Delta3_logit[1]) * 100;
+      Delta4 = inv_logit(Delta4_logit[1]) * 90 + 10;
+      k      = inv_logit(k_logit[1]) * 10;
+      z      = inv_logit(z_logit[1]) * 1.15;
+    }
+    else {
+      Delta1 = inv_logit(mu_Delta1[1] + sigma_Delta1[1] * raw_Delta1[1]) * 100;
+      Delta2 = inv_logit(mu_Delta2[1] + sigma_Delta2[1] * raw_Delta2[1]) * 100;
+      Delta3 = inv_logit(mu_Delta3[1] + sigma_Delta3[1] * raw_Delta3[1]) * 100;
+      Delta4 = inv_logit(mu_Delta4[1] + sigma_Delta4[1] * raw_Delta4[1]) * 90 + 10;
+      k      = inv_logit(mu_k[1] + sigma_k[1] * raw_k[1]) * 10;
+      z      = inv_logit(mu_z[1] + sigma_z[1] * raw_z[1]) * 1.15;
+    }
   }
   else {
     Delta1 = constrained_Delta1[1];
@@ -126,8 +151,8 @@ transformed parameters {
 
 model {
   // here inv gamma is on SD, should be on variance instead
-  epsilon_scale ~ inv_gamma(1, 1);
-  //epsilon_scale ~ normal(0, 5);
+  epsilon_variance ~ inv_gamma(1, 1);
+  //epsilon_variance ~ normal(0, 5);
   
   if(hierarchical == 0) {
     Delta1 ~ normal(15.77, 10);
@@ -138,33 +163,43 @@ model {
     z ~ normal(0.4, 0.5);
   }
   else {
-    raw_Delta1[1] ~ std_normal();
-    raw_Delta2[1] ~ std_normal();
-    raw_Delta3[1] ~ std_normal();
-    raw_Delta4[1] ~ std_normal();
-    raw_k[1]      ~ std_normal();
-    raw_z[1]      ~ std_normal();
+    mu_Delta1[1] ~ normal(prior_mu_Delta1, 2);
+    mu_Delta2[1] ~ normal(prior_mu_Delta2, 2);
+    mu_Delta3[1] ~ normal(prior_mu_Delta3, 2);
+    mu_Delta4[1] ~ normal(prior_mu_Delta4, 2);
+    mu_k[1] ~ normal(prior_mu_k, 2);
+    mu_z[1] ~ normal(prior_mu_z, 2);
     
-    inv_logit(mu_Delta1[1]) * 100 ~ normal(15.77, 10);
-    inv_logit(mu_Delta2[1]) * 100 ~ normal(40.97, 10);
-    inv_logit(mu_Delta3[1]) * 100 ~ normal(0.21, 10);
-    inv_logit(mu_Delta4[1]) * 100 ~ normal(19.82, 10);
-    inv_logit(mu_k[1]) * 10 ~ normal(2.93, 5);
-    inv_logit(mu_z[1]) * 1.15 ~ normal(0.4, 0.5);
+    sigma_Delta1[1] ~ normal(0, 2);
+    sigma_Delta2[1] ~ normal(0, 2);
+    sigma_Delta3[1] ~ normal(0, 2);
+    sigma_Delta4[1] ~ normal(0, 2);
+    sigma_k[1] ~ normal(0, 1);
+    sigma_z[1] ~ normal(0, 1);
     
-    target += inv_logit_adjustment(mu_Delta1[1]);
-    target += inv_logit_adjustment(mu_Delta2[1]);
-    target += inv_logit_adjustment(mu_Delta3[1]);
-    target += inv_logit_adjustment(mu_Delta4[1]);
-    target += inv_logit_adjustment(mu_k[1]);
-    target += inv_logit_adjustment(mu_z[1]);
+    if(centered == 1) {
+      Delta1_logit[1] ~ normal(mu_Delta1[1], sigma_Delta1[1]);
+      Delta2_logit[1] ~ normal(mu_Delta2[1], sigma_Delta2[1]);
+      Delta3_logit[1] ~ normal(mu_Delta3[1], sigma_Delta3[1]);
+      Delta4_logit[1] ~ normal(mu_Delta4[1], sigma_Delta4[1]);
+      k_logit[1] ~ normal(k_logit[1], sigma_k[1]);
+      z_logit[1] ~ normal(z_logit[1], sigma_z[1]);
+    }
+    else {
+      raw_Delta1[1] ~ std_normal();
+      raw_Delta2[1] ~ std_normal();
+      raw_Delta3[1] ~ std_normal();
+      raw_Delta4[1] ~ std_normal();
+      raw_k[1]      ~ std_normal();
+      raw_z[1]      ~ std_normal();
+    }
   }
   
   if(outlier_threshold < 1000) {
-    diff[indices_below_threshold] ~ normal(to_vector(transition_function)[indices_below_threshold], sqrt(epsilon_scale));
+    diff[indices_below_threshold] ~ normal(to_vector(transition_function)[indices_below_threshold], sqrt(epsilon_variance));
   }
   else {
-    diff ~ normal(to_vector(transition_function), sqrt(epsilon_scale));
+    diff ~ normal(to_vector(transition_function), sqrt(epsilon_variance));
   }
 }
 generated quantities {
@@ -176,7 +211,7 @@ generated quantities {
   for(t in T:Tpred) {
     vector[C] transition = rate_double_logistic(eta[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
     for(c in 1:C) {
-      real error = normal_rng(0, epsilon_scale);
+      real error = normal_rng(0, epsilon_variance);
       eta[c, t] = eta[c, t - 1] + transition[c] + error;
     }
     

@@ -37,6 +37,7 @@ lifeplus <- function(
   outlier_threshold = 1000,
   
   hierarchical = TRUE,
+  centered = TRUE,
   
   country_specific_global_shrinkage = FALSE,
   
@@ -174,6 +175,7 @@ lifeplus <- function(
     y = obs,
     
     hierarchical = as.numeric(hierarchical),
+    centered = as.numeric(centered),
     
     outlier_threshold = outlier_threshold,
     

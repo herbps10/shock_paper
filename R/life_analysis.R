@@ -87,10 +87,11 @@ mean(e0_differences$diff < -threshold, na.rm = TRUE)
 set.seed(4)
 random_countries <- sample(unique(datM$name), 20)
 random_countries <- unique(c(random_countries, c("Republic of Korea", "Dem. People's Republic of Korea", "Bangladesh", "Lebanon", "Somalia")))
+random_countries <- c("Republic of Korea", "Dem. People's Republic of Korea", "Bangladesh", "Lebanon", "Somalia")
 
 fits <- expand_grid(
   #scale_global = c(1e-3, 1e-2, 1e-1),
-  scale_global = 1e-3,
+  scale_global = 1e-2,
   #model = c("shock2")
   model = "logistic_shock",
   outlier_threshold = 1e3
@@ -116,8 +117,8 @@ fits <- expand_grid(
       
       model = model,
       
-      adapt_delta = 0.9,
-      max_treedepth = 12,
+      adapt_delta = 0.95,
+      max_treedepth = 14,
       parallel_chains = 4,
       iter_warmup = 250,
       #iter_sampling = 1e3,
@@ -188,12 +189,12 @@ name <- "Republic of Korea"
 name <- random_countries
 plot_transition(fit_noshock_naive, name)
 plot_transition(fit_noshock, name) + ylim(c(0, 30))
-plot_transition(fit_shock, name) + ylim(c(0, 30))
-plot_shock(fit_shock, name, "pos")
+plot_transition(fit_shock) + ylim(c(0, 30))
+plot_shock(fit_shock)
 plot_shock(fit_shock, name, "neg")
 
 plot_temporal("eta", fit_noshock, name, plot_data = TRUE) + ylim(c(15, 150))
-plot_temporal("eta", fit_shock, name, plot_data = TRUE) + ylim(c(15, 150))
+plot_temporal("eta", fit_shock, plot_data = TRUE) + ylim(c(15, 150))
 plot_temporal("eta_crisisfree", fit_shock, name, plot_data = TRUE) + ylim(c(15, 150))
 
 fit_shock$posteriors$temporal |> filter(year == 2100) |> mutate(ci_width = `99.9%` - `0.1%`)

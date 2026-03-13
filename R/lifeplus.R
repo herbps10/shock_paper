@@ -206,6 +206,9 @@ lifeplus <- function(
   cat("Extracting posteriors...\n")
   
   result$posteriors <- process_life_fit(result, ifelse(is.null(args$parallel_chains), 1, args$parallel_chains))
+
+
+  result$diagnose <- fit$diagnostic_summary()
   
   attr(result, "class") <- "fpemplus"
   

@@ -53,10 +53,10 @@ transformed data {
     }
   }
 
-  real Delta1_lower = 0; real Delta1_upper = 25; real Delta1_range = Delta1_upper - Delta1_lower;
+  real Delta1_lower = 0;  real Delta1_upper = 25; real Delta1_range = Delta1_upper - Delta1_lower;
   real Delta2_lower = 25; real Delta2_upper = 50; real Delta2_range = Delta2_upper - Delta2_lower;
-  real Delta3_lower = 0; real Delta3_upper = 10; real Delta3_range = Delta3_upper - Delta3_lower;
-  real Delta4_lower = 5; real Delta4_upper = 30; real Delta4_range = Delta4_upper - Delta4_lower;
+  real Delta3_lower = 0;  real Delta3_upper = 10; real Delta3_range = Delta3_upper - Delta3_lower;
+  real Delta4_lower = 5;  real Delta4_upper = 30; real Delta4_range = Delta4_upper - Delta4_lower;
   real k_lower = 0; real k_upper = 10; real k_range = k_upper - k_lower;
   real z_lower = 0; real z_upper = 1.15/5.0; real z_range = z_upper - z_lower;
   
@@ -217,7 +217,7 @@ generated quantities {
   for(t in T:Tpred) {
     vector[C] transition = rate_double_logistic(eta[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
     for(c in 1:C) {
-      real error = normal_rng(0, epsilon_sigma);
+      real error = normal_rng(0, sqrt(epsilon_variance));
       eta[c, t] = eta[c, t - 1] + transition[c] + error;
     }
     

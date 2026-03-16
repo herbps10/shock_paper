@@ -17,7 +17,7 @@ data(include_2010, package = "bayesLife")
 included_codes <- include_2010 |> filter(include_code %in% 1:2) |> pull(country_code)
 
 large_countries <- pop1 |>
-  filter(`2020` >= 1e3) |>
+  filter(`2023` >= 1e3) |>
   pull(name)
 
 datM <- e0M1 |>
@@ -30,36 +30,43 @@ datM <- e0M1 |>
 index <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 
 fits <- expand_grid(
-  scale_global = 1e-2,
+  scale_global = c(1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8),
   model = c("logistic_shock", "logistic"),
   outlier_threshold = c(5, 1e3),
+<<<<<<< HEAD
   centered = c(TRUE, FALSE),
   hierarchical = c(TRUE),
   config = c("low")
+=======
+  centered = c(FALSE),
+  hierarchical = c(TRUE),
+  config = c("high")
+>>>>>>> a7af41da1d910f44c3453064dbcd563b81e769e4
 ) |>
   filter(!(model == "logistic_shock" & outlier_threshold == 5)) |>
+  filter(!(model == "logistic" & scale_global != 1e-2)) |>
   filter(!(hierarchical == FALSE & centered == TRUE))
 
-fits <- fits[index, ]
+fits <- fits[(1:nrow(fits) %% 9 + 1) == index, ]
 
-#random_countries <- sample(unique(datM$name), 50)
+#random_countries <- c(sample(unique(datM$name), 25), "Niger")
 #print(random_countries)
 #datM <- datM |> filter(name %in% random_countries)
 
 print(glue::glue("Starting index {index} with {nrow(datM)} rows for {length(unique(datM$name))} countries"))
-
+print(glue::glue("Scale: {fits$scale_global} model: {fits$model} outlier: {fits$outlier_threshold}"))
 
 fits <- fits |>
   mutate(fit = pmap(list(scale_global, model, outlier_threshold, centered, config), function(scale_global, model, outlier_threshold, centered, config) {
     if(config == "high") {
-       adapt_delta <- 0.99
-       max_treedepth <- 14
+      adapt_delta <- 0.999
+      max_treedepth <- 15
       iter_warmup <- 500
       iter_sampling <- 500
     }
     else {
-      adapt_delta <- 0.95
-      max_treedepth <- 10
+      adapt_delta <- 0.999
+      max_treedepth <- 14
       iter_warmup <- 250
       iter_sampling <- 250
     }

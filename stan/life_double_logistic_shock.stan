@@ -12,6 +12,7 @@ functions {
     return shock_raw_pred * truncated_local_shrinkage_pred * tau;
   } 
   
+  
   real inv_logit_adjustment(real x) {
     return x - 2 * log1p_exp(x);
   }
@@ -41,12 +42,20 @@ data {
   
   real<lower=0> outlier_threshold;
   
+  int<lower=0, upper=1> constrain_negative;
+  
   real<lower=0> scale_global;
   real<lower=0> slab_scale;
   real<lower=0> slab_df;
 }
 transformed data {
-  int n_shocks = C * (T - 1);
+  int n_shocks;
+  if(constrain_negative == 1) {
+    n_shocks = C * T;
+  }
+  else {
+    n_shocks = C * (T - 1);
+  }
   real<lower=1> nu_global = 1;
   real<lower=1> nu_local = 1;
   
@@ -68,19 +77,19 @@ transformed data {
     }
   }
 
-  real Delta1_lower = 0; real Delta1_upper = 30; real Delta1_range = Delta1_upper - Delta1_lower;
+  real Delta1_lower = 0; real Delta1_upper = 25; real Delta1_range = Delta1_upper - Delta1_lower;
   real Delta2_lower = 25; real Delta2_upper = 50; real Delta2_range = Delta2_upper - Delta2_lower;
   real Delta3_lower = 0; real Delta3_upper = 10; real Delta3_range = Delta3_upper - Delta3_lower;
   real Delta4_lower = 5; real Delta4_upper = 30; real Delta4_range = Delta4_upper - Delta4_lower;
   real k_lower = 0; real k_upper = 10; real k_range = k_upper - k_lower;
-  real z_lower = 0; real z_upper = 1.15; real z_range = z_upper - z_lower;
+  real z_lower = 0; real z_upper = 1.15/5.0; real z_range = z_upper - z_lower;
   
   real prior_mu_Delta1 = logit((15.77 - Delta1_lower) / Delta1_range);
   real prior_mu_Delta2 = logit((40.97 - Delta2_lower) / Delta1_range);
   real prior_mu_Delta3 = logit(( 0.21 - Delta3_lower) / Delta3_range);
   real prior_mu_Delta4 = logit((19.82 - Delta4_lower) / Delta4_range);
   real prior_mu_k      = logit((2.93 - k_lower) / k_range);
-  real prior_mu_z      = logit(( 0.4 - z_lower) / z_range);
+  real prior_mu_z      = logit(( 0.4/5.0 - z_lower) / z_range);
 }
 parameters {
   //real log_epsilon_variance;
@@ -121,14 +130,15 @@ parameters {
   array[1 - hierarchical] vector<lower=k_lower, upper=k_upper>[C] constrained_k;
   array[1 - hierarchical] vector<lower=z_lower, upper=z_upper>[C] constrained_z;
   
-  vector[n_shocks] shock_raw;
+  vector[n_shocks * (1 - constrain_negative)] shock_raw;
+  vector[n_shocks * (constrain_negative)] shock_raw_negative;
   vector<lower=0>[n_shocks] lambda;
   real<lower=0> tau;
   real<lower=0> caux;
 }
 
 transformed parameters {
-  //real epsilon_variance = exp(log_epsilon_variance);
+  real epsilon_sd = sqrt(epsilon_variance);
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
    
   vector[C] Delta1; 
@@ -165,21 +175,41 @@ transformed parameters {
     z      = constrained_z[1];
   }
   
-  matrix[C, T - 1] shock = rep_matrix(0, C, T - 1);
+  matrix[C, constrain_negative == 1 ? T : T - 1] shock = rep_matrix(0, C, constrain_negative == 1 ? T : T - 1);
+  
   real<lower=0> c_slab = slab_scale * sqrt(caux);
   vector<lower=0>[n_shocks] lambda_tilde = sqrt(c_slab^2 * square (lambda) ./ (c_slab^2 + tau^2 * square(lambda)));
-  shock = to_matrix(shock_raw .* lambda_tilde * tau, C, T - 1);
+  if(constrain_negative == 1) {
+    shock = to_matrix(shock_raw_negative .* lambda_tilde * tau, C, T);
+  }
+  else {
+    shock = to_matrix(shock_raw .* lambda_tilde * tau, C, T - 1);
+  }
   
-  transition_function = to_matrix(
-    rate_double_logistic(
-      to_vector(y[, 1:(T - 1)]),
-      rep_vector_times(Delta1, T - 1),
-      rep_vector_times(Delta2, T - 1),
-      rep_vector_times(Delta3, T - 1),
-      rep_vector_times(Delta4, T - 1),
-      rep_vector_times(k, T - 1),
-      rep_vector_times(z, T - 1)
-    ), C, T - 1) + shock;
+  if(constrain_negative == 1) {
+    transition_function = to_matrix(
+      rate_double_logistic(
+        to_vector(y[, 1:(T - 1)] - shock[, 1:(T - 1)]),
+        rep_vector_times(Delta1, T - 1),
+        rep_vector_times(Delta2, T - 1),
+        rep_vector_times(Delta3, T - 1),
+        rep_vector_times(Delta4, T - 1),
+        rep_vector_times(k, T - 1),
+        rep_vector_times(z, T - 1)
+      ), C, T - 1) + shock[, 2:T] - shock[, 1:(T - 1)];
+  }
+  else {
+    transition_function = to_matrix(
+      rate_double_logistic(
+        to_vector(y[, 1:(T - 1)]),
+        rep_vector_times(Delta1, T - 1),
+        rep_vector_times(Delta2, T - 1),
+        rep_vector_times(Delta3, T - 1),
+        rep_vector_times(Delta4, T - 1),
+        rep_vector_times(k, T - 1),
+        rep_vector_times(z, T - 1)
+      ), C, T - 1) + shock;
+  }
 }
 
 model {
@@ -191,7 +221,7 @@ model {
     Delta3 ~ normal(0.21, 10);
     Delta4 ~ normal(19.82, 10);
     k ~ normal(2.93, 5);
-    z ~ normal(0.4, 0.5);
+    z ~ normal(0.4/5.0, 0.5);
   }
   else {
     mu_Delta1[1] ~ normal(prior_mu_Delta1, 2);
@@ -229,13 +259,13 @@ model {
   shock_raw ~ std_normal();
   caux ~ inv_gamma(0.5 * slab_df, 0.5 * slab_df);
   lambda ~ student_t(nu_local, 0, 1);
-  tau ~ student_t(nu_global, 0, scale_global);
+  tau ~ student_t(nu_global, 0, scale_global * epsilon_sd);
   
   if(outlier_threshold < 1000) {
-    diff[indices_below_threshold] ~ normal(to_vector(transition_function)[indices_below_threshold], sqrt(epsilon_variance));
+    diff[indices_below_threshold] ~ normal(to_vector(transition_function)[indices_below_threshold], epsilon_sd);
   }
   else {
-    diff ~ normal(to_vector(transition_function), sqrt(epsilon_variance));
+    diff ~ normal(to_vector(transition_function), epsilon_sd);
   }
 }
 generated quantities {
@@ -255,15 +285,27 @@ generated quantities {
       shock2[c, t - 1] = shock_rng(nu_local, c_slab, tau);
     }
     
-    vector[C] transition = rate_double_logistic(eta[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
+    vector[C] transition;
+    if(constrain_negative == 1) {
+      transition = rate_double_logistic(eta[, t - 1] - shock2[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
+    }
+    else {
+      transition = rate_double_logistic(eta[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
+    }
+    
     for(c in 1:C) {
-      real error = normal_rng(0, epsilon_variance);
-      eta[c, t] = eta[c, t - 1] + transition[c] + error + shock2[c, t - 1];
+      real error = normal_rng(0, epsilon_sd);
+      if(constrain_negative == 1) {
+        eta[c, t] = eta[c, t - 1] + transition[c] + error + shock2[c, t] - shock2[c, t - 1];
+      }
+      else {
+        eta[c, t] = eta[c, t - 1] + transition[c] + error + shock2[c, t - 1];
+      }
     }
     
     vector[C] transition_crisisfree = rate_double_logistic(eta_crisisfree[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
     for(c in 1:C) {
-      real error = normal_rng(0, epsilon_variance);
+      real error = normal_rng(0, epsilon_sd);
       eta_crisisfree[c, t] = eta_crisisfree[c, t - 1] + transition_crisisfree[c] + error;
     }
   }

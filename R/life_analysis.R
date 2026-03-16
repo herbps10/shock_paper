@@ -4,6 +4,7 @@ library(tidybayes)
 library(bayesLife)
 library(patchwork)
 
+source("R/plot.R")
 source("R/plot_theme.R")
 source("R/lifeplus.R")
 source("R/process_lifeplus.R")
@@ -12,7 +13,6 @@ data(UNlocations, package = "wpp2024")
 data(e0M1, package = "wpp2024")
 data(pop1, package = "wpp2024")
 data(include_2010, package = "bayesLife")
-
 
 # Number of countries before filtering
 e0M1 |>
@@ -85,26 +85,30 @@ threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
 set.seed(4)
-random_countries <- sample(unique(datM$name), 20)
-random_countries <- unique(c(random_countries, c("Republic of Korea", "Dem. People's Republic of Korea", "Bangladesh", "Lebanon", "Somalia")))
-random_countries <- c("Republic of Korea", "Dem. People's Republic of Korea", "Bangladesh", "Lebanon", "Somalia")
+random_countries <- unique(c(sample(unique(datM$name), 25), c("Republic of Korea", "Bosnia and Herzegovina", "Cambodia", "Lebanon", "Timor-Leste", "Syrian Arab Republic", "Switzerland", "Norway")))
+random_countries <- c("Republic of Korea", "Bosnia and Herzegovina", "Cambodia", "Lebanon", "Timor-Leste", "Syrian Arab Republic", "Switzerland", "Norway")
 
+random_countries <- "Republic of Korea"
 fits <- expand_grid(
   #scale_global = c(1e-3, 1e-2, 1e-1),
+  #scale_global = c(1e-2, 1e-3, 1e-4, 1e-5, 1e-6),
   scale_global = 1e-2,
   #model = c("shock2")
   #model = "logistic_shock",
   #outlier_threshold = 1e3
-  model = "logistic",
-  outlier_threshold = 5
+  #model = "logistic_shock",
+  model = c("logistic_shock", "shock2"),
+  outlier_threshold = 1e3,
+  constrain_negative = c(FALSE)
 ) |>
-  bind_rows(
-    #tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
-    tibble(scale_global = 1e-2, model = "logistic_shock", outlier_threshold = 1e3)
-    #tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
-  ) |>
-  mutate(fit = pmap(list(scale_global, model, outlier_threshold), function(scale_global, model, outlier_threshold) {
+  #bind_rows(
+  #  #tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
+  #  #tibble(scale_global = 1e-2, model = "logistic_shock", outlier_threshold = 1e3)
+  #  tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
+  #) |>
+  mutate(fit = pmap(list(scale_global, model, outlier_threshold, constrain_negative), function(scale_global, model, outlier_threshold, constrain_negative) {
     lifeplus(
+      #datM |> filter(name %in% random_countries),
       datM |> filter(name %in% random_countries),
       y = "e0", 
       year = "year",
@@ -113,28 +117,48 @@ fits <- expand_grid(
       start_year = 1950,
       end_year = 2100,
       
-      hierarchical = TRUE,
+      hierarchical_splines = c("intercept", "name"),
+      spline_degree = 2,
+      num_knots = 7, 
+      
+      hierarchical = FALSE,
       centered = FALSE,
       
       outlier_threshold = outlier_threshold,
       
       model = model,
       
-      adapt_delta = 0.95,
-      max_treedepth = 12,
+      adapt_delta = 0.99,
+      max_treedepth = 14,
       parallel_chains = 4,
-      iter_warmup = 250,
+      iter_warmup = 5e2,
       #iter_sampling = 1e3,
-      iter_sampling = 250,
+      iter_sampling = 1e3,
       
       extra_stan_data = list(
         scale_global = scale_global,
+        constrain_negative = as.numeric(constrain_negative),
         slab_scale = 10,
         slab_df = 6
       )
     )
   }))
 
+fits$fit[[1]]$samples$summary(c("epsilon_sigma", "alpha", "rho"))
+
+plot_transition(fits$fit[[1]])
+plot_transition(fits$fit[[2]])
+
+plot_temporal("eta", fits$fit[[1]], "Timor-Leste")
+plot_temporal("eta_crisisfree", fits$fit[[1]], "Timor-Leste")
+plot_temporal("eta", fits$fit[[2]], "Timor-Leste")
+
+fits$fit[[2]]$posteriors$temporal |>
+  filter(year == 2100) |>
+  mutate(ci_width = `90%` - `10%`) |>
+  select(variable, name, ci_width) |>
+  pivot_wider(names_from = "variable", values_from = "ci_width")
+ 
 fit_shock <- fits$fit[[1]]
 
 fit <- fits$fit[[1]]
@@ -151,6 +175,7 @@ bayesplot::mcmc_dens(fits$fit[[2]]$samples$draws(c("mu_Delta1", "mu_Delta2", "mu
 
 fit_shock   <- fits$fit[[1]]
 fit_noshock <- fits$fit[[2]]
+fit_noshock_naive <- fits$fit[[3]]
 
 left_join(
   fit_shock$posteriors$transition_functions |> filter(.width == 0.5) |> select(name, x, transition_function_pred),
@@ -188,16 +213,78 @@ left_join(
 (Delta_shock |> median_qi()) |> left_join(Delta_noshock |> median_qi(), by = "c") |> left_join(fit_shock$country_index)  |>
   select(name, Delta1.x, Delta1.y, Delta2.x, Delta2.y, Delta3.x, Delta3.y, Delta4.x, Delta4.y, k.x, k.y, z.x, z.y)
 
-name <- "Lebanon"
-name <- random_countries
-plot_transition(fit_noshock_naive, name)
-plot_transition(fit_noshock, name) + ylim(c(0, 10))
-plot_transition(fit_shock, name) + ylim(c(0, 10))
-plot_shock(fit_shock)
+diagnostics <- fits |>
+  filter(model == "logistic_shock") |>
+  mutate(diagnostics = map(fit, \(fit) fit$samples$diagnostic_summary())) |>
+  select(country, diagnostics)
 
-plot_temporal("eta", fit_noshock, plot_data = TRUE) + ylim(c(15, 150))
-plot_temporal("eta_crisisfree", fit_shock, plot_data = TRUE) + ylim(c(15, 150))
-plot_temporal("eta", fit_shock, plot_data = TRUE) + ylim(c(15, 150))
+diagnostics |>
+  mutate(treedepth = map_int(diagnostics, \(x) max(x$num_max_treedepth))) |>
+  arrange(-treedepth)
+
+fit_shock <- fits |>
+  filter(model == "logistic_shock", country == "Kazakhstan") |>
+  pull(fit)
+
+fit_noshock <- fits |>
+  filter(model == "logistic", country == "Kazakhstan") |>
+  pull(fit)
+
+fits |>
+  select(model, country, params) |>
+  unnest(params) |>
+  select(model, country, variable, q95) |>
+  pivot_wider(names_from = c("model"), values_from = "q95") |>
+  mutate(diff = abs(logistic_shock - logistic)) |>
+  arrange(-diff) |>
+  filter(country == "Kazakhstan")
+
+plot_transition(fit_shock[[1]]) + geom_hline(yintercept = 1.15) + ylim(c(-2.5, 7.5))
+plot_transition(fit_noshock[[1]]) + geom_hline(yintercept = 1.15) + ylim(c(-2.5, 7.5))
+plot_shock(fit_shock[[1]])
+plot_temporal("eta", fit_shock[[1]])
+plot_temporal("eta", fit_noshock[[1]])
+plot_temporal("eta_crisisfree", fit_shock[[1]])
+
+fit_shock[[1]]$samples$summary("epsilon_variance")
+fit_noshock[[1]]$samples$summary("epsilon_variance")
+
+fits$params <- map(fits$fit, \(x) x$samples$summary(c("Delta1", "Delta2", "Delta3", "Delta4", "k", "z", "epsilon_variance")))
+fits |>
+  select(model, country, params) |>
+  unnest(params) |>
+  select(model, country, variable, mean) |>
+  pivot_wider(names_from = c("model"), values_from = "mean") |>
+  mutate(diff = abs(logistic_shock - logistic)) |>
+  arrange(-diff)
+
+fits$pred <- map(fits$fit, \(x) x$posteriors$temporal |> filter(variable %in% c("eta", "eta_crisisfree"), year == 2100))
+
+fits |>
+  select(model, country, pred) |>
+  unnest(pred) |>
+  mutate(ci_width = `90%` - `10%`) |>
+  filter((model == "logistic_shock" & variable == "eta_crisisfree") | (model == "logistic" & variable == "eta")) |>
+  select(model, country, ci_width) |>
+  pivot_wider(names_from = "model", values_from = "ci_width") |>
+  ggplot(aes(x = logistic, y = logistic_shock)) +
+  geom_point() +
+  geom_abline()
+ 
+name <- "Niger"
+plot_transition(fit_noshock_naive, name)
+plot_transition(fit_noshock, name)
+plot_transition(fit_shock, name)
+plot_shock(fit_shock, "Denmark")
+
+plot_temporal("eta", fit_noshock, name, plot_data = TRUE) + ylim(c(15, 150))
+plot_temporal("eta_crisisfree", fit_shock, name, plot_data = TRUE) + ylim(c(15, 150))
+plot_temporal("eta", fit_shock, name, plot_data = TRUE) + ylim(c(15, 150))
+
+plot_shock(fits$fit[[1]], "Niger")
+
+plot_transition(fits$fit[[1]], "Lebanon") + ylim(c(0, 5))
+plot_transition(fits$fit[[2]], "Lebanon") + ylim(c(0, 5))
 
 fit_shock$posteriors$temporal |> filter(year == 2100) |> mutate(ci_width = `99.9%` - `0.1%`)
 

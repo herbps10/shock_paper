@@ -31,8 +31,6 @@ data {
   real a_lower_bound;
   real a_upper_bound;
   
-  int<lower=0, upper=1> normal_data_model;
-  real<lower=0> data_model_df;
 }
 transformed data {
   int num_basis = num_knots + spline_degree - 1;
@@ -58,30 +56,22 @@ transformed data {
   real P_tilde2 = 110;
   
   int hierarchical = 1;
-  
-  //real epsilon_scale = 1.99;
 }
 
 parameters {
   // Spline rate vs. level function
-  //vector[hierarchical * (num_basis - 2)] a_mu;
   vector[hierarchical * (num_basis)] a_mu;
-  //vector<lower=0>[hierarchical * (num_basis - 2)] a_sigma;
   vector<lower=0>[hierarchical * (num_basis)] a_sigma;
-  //matrix[C, num_basis - 2] a_raw;
   matrix[C, num_basis] a_raw;
 
-  //vector[C] Omega_raw;
-  //real P_tilde2_mu;
-  //real<lower=0> P_tilde2_sigma;
-  //vector[C] P_tilde2_raw;
-
-  real<lower=0> epsilon_scale;
+  real<lower=0> epsilon_variance;
 }
 
 transformed parameters {
   matrix[C, t_last] transition_function = rep_matrix(0, C, t_last);
   matrix[C, num_basis] a = rep_matrix(0, C, num_basis);
+  
+  real epsilon_sd = sqrt(epsilon_variance);
 
   // Initialize the spline coefficients
   for(i in 1:(num_basis - 3)) {
@@ -104,8 +94,6 @@ transformed parameters {
   }
 
   for(c in 1:C) {
-    //a[c, (num_basis - 1):num_basis] = rep_row_vector(a[c, num_basis - 2], 2);
-    //a[c, (num_basis):num_basis] = rep_row_vector(a[c, num_basis - 1], 1);
     for(t in 2:t_last) {
       transition_function[c, t] = rate_spline(ymat[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
     }
@@ -118,26 +106,15 @@ model {
   if(hierarchical == 1) {
     a_mu ~ normal(0, 15);
     a_sigma ~ normal(0, 5); // increasing prior variance based on checks
-    // a_sigma ~ std_normal();
   }
   to_vector(a_raw) ~ std_normal();
 
-  // here inv gamma is on SD, should be on variance instead
-  // epsilon_scale ~ inv_gamma(0.1, 0.1);
-  epsilon_scale ~ normal(0, 5);
+  epsilon_variance ~ inv_gamma(0.1, 0.1);
 
-  //P_tilde2_mu ~ std_normal();
-  //P_tilde2_sigma ~ std_normal();
-  //P_tilde2_raw ~ std_normal();
 
   for(i in 1:N) {
     if(held_out[i] == 0 && time[i] > 1) {
-      if(normal_data_model == 1) {
-        (ymat[country[i], time[i]] - ymat[country[i], time[i] - 1]) ~ normal(transition_function[country[i], time[i]], epsilon_scale);
-      }
-      else {
-        (ymat[country[i], time[i]] - ymat[country[i], time[i] - 1]) ~ student_t(data_model_df, transition_function[country[i], time[i]], epsilon_scale);
-      }
+      (ymat[country[i], time[i]] - ymat[country[i], time[i] - 1]) ~ normal(transition_function[country[i], time[i]], epsilon_sd);
     }
   }
 }
@@ -147,13 +124,11 @@ generated quantities {
   vector[num_grid] transition_function_mean;
 
   if(hierarchical == 1) {
-    // mean transition function based on a_mu, consider mean of country functions as well
     vector[num_basis] a_mean;
     a_mean[1:(num_basis - 3)] = a_lower_bound + (a_upper_bound - a_lower_bound) * inv_logit(a_mu[1:(num_basis - 3)]);
     a_mean[num_basis - 2] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_mu[num_basis - 2]);
     a_mean[num_basis - 1] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_mu[num_basis - 1]);
     a_mean[num_basis] = a_lower_bound + (1.15/5.0 - a_lower_bound) * inv_logit(a_mu[num_basis]);
-    //a_mean[(num_basis - 1):num_basis] = rep_vector(a_mean[num_basis - 2], 2);
 
     for(i in 1:num_grid) {
       transition_function_mean[i] = rate_spline(grid[i], 0, 1, to_row_vector(a_mean), ext_knots, num_basis, spline_degree);
@@ -164,13 +139,7 @@ generated quantities {
     eta[c, 1:final_observed[c]] = ymat[c, 1:final_observed[c]];
 
     for(t in (final_observed[c] + 1):T) {
-      real error;
-      if(normal_data_model == 1) {
-        error = normal_rng(0, epsilon_scale);
-      }
-      else {
-        error = student_t_rng(data_model_df, 0, epsilon_scale);
-      }
+      real error = normal_rng(0, epsilon_sd);
       real transition = rate_spline(eta[c, t - 1], P_tilde, P_tilde2, a[c,], ext_knots, num_basis, spline_degree);
       eta[c, t] = eta[c, t - 1] + transition + error;
     }

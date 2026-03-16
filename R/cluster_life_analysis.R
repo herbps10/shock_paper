@@ -34,7 +34,7 @@ fits <- expand_grid(
   model = c("logistic_shock", "logistic"),
   outlier_threshold = c(5, 1e3),
   centered = c(TRUE, FALSE),
-  hierarchical = c(FALSE),
+  hierarchical = c(TRUE),
   config = c("low")
 ) |>
   filter(!(model == "logistic_shock" & outlier_threshold == 5)) |>

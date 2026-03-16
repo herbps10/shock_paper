@@ -53,22 +53,22 @@ transformed data {
     }
   }
 
-  real Delta1_lower = 0; real Delta1_upper = 30; real Delta1_range = Delta1_upper - Delta1_lower;
+  real Delta1_lower = 0; real Delta1_upper = 25; real Delta1_range = Delta1_upper - Delta1_lower;
   real Delta2_lower = 25; real Delta2_upper = 50; real Delta2_range = Delta2_upper - Delta2_lower;
   real Delta3_lower = 0; real Delta3_upper = 10; real Delta3_range = Delta3_upper - Delta3_lower;
   real Delta4_lower = 5; real Delta4_upper = 30; real Delta4_range = Delta4_upper - Delta4_lower;
   real k_lower = 0; real k_upper = 10; real k_range = k_upper - k_lower;
-  real z_lower = 0; real z_upper = 1.15; real z_range = z_upper - z_lower;
+  real z_lower = 0; real z_upper = 1.15/5.0; real z_range = z_upper - z_lower;
   
   real prior_mu_Delta1 = logit((15.77 - Delta1_lower) / Delta1_range);
   real prior_mu_Delta2 = logit((40.97 - Delta2_lower) / Delta1_range);
   real prior_mu_Delta3 = logit(( 0.21 - Delta3_lower) / Delta3_range);
   real prior_mu_Delta4 = logit((19.82 - Delta4_lower) / Delta4_range);
   real prior_mu_k      = logit((2.93 - k_lower) / k_range);
-  real prior_mu_z      = logit(( 0.4 - z_lower) / z_range);
+  real prior_mu_z      = logit(( 0.4/5.0 - z_lower) / z_range);
 }
 parameters {
-  real<lower=0.01> epsilon_variance;
+  real<lower=0> epsilon_sigma;
   
   array[hierarchical * (1 - centered)] vector[C] raw_Delta1;
   array[hierarchical * (1 - centered)] vector[C] raw_Delta2;
@@ -107,7 +107,6 @@ parameters {
 }
 
 transformed parameters {
-  //real epsilon_variance = exp(log_epsilon_variance);
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
   
   vector[C] Delta1; 
@@ -158,8 +157,8 @@ transformed parameters {
 
 model {
   // here inv gamma is on SD, should be on variance instead
-  epsilon_variance ~ inv_gamma(1, 1);
-  //epsilon_variance ~ normal(0, 5);
+  epsilon_sigma ~ normal(0, 2);
+  //epsilon_sigma ~ normal(0, 5);
   
   if(hierarchical == 0) {
     Delta1 ~ normal(15.77, 10);
@@ -167,7 +166,7 @@ model {
     Delta3 ~ normal(0.21, 10);
     Delta4 ~ normal(19.82, 10);
     k ~ normal(2.93, 5);
-    z ~ normal(0.4, 0.5);
+    z ~ normal(0.4/5.0, 0.5);
   }
   else {
     mu_Delta1[1] ~ normal(prior_mu_Delta1, 2);
@@ -203,10 +202,10 @@ model {
   }
   
   if(outlier_threshold < 1000) {
-    diff[indices_below_threshold] ~ normal(to_vector(transition_function)[indices_below_threshold], sqrt(epsilon_variance));
+    diff[indices_below_threshold] ~ normal(to_vector(transition_function)[indices_below_threshold], epsilon_sigma);
   }
   else {
-    diff ~ normal(to_vector(transition_function), sqrt(epsilon_variance));
+    diff ~ normal(to_vector(transition_function), epsilon_sigma);
   }
 }
 generated quantities {
@@ -218,7 +217,7 @@ generated quantities {
   for(t in T:Tpred) {
     vector[C] transition = rate_double_logistic(eta[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
     for(c in 1:C) {
-      real error = normal_rng(0, epsilon_variance);
+      real error = normal_rng(0, epsilon_sigma);
       eta[c, t] = eta[c, t - 1] + transition[c] + error;
     }
     

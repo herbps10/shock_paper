@@ -15,7 +15,7 @@ plot_shock <- function(fit, areas = fit$country_index$name) {
   fit$posteriors$temporal |>
     filter(variable == "shock2", name %in% areas) |>
     ggplot(aes(x = year, y = `50%`)) +
-    geom_errorbar(aes(ymin = `1%`, ymax = `99%`), width = 0) +
+    geom_errorbar(aes(ymin = `10%`, ymax = `90%`), width = 0) +
     geom_point() +
     facet_wrap(~name)
 }
@@ -50,14 +50,14 @@ plot_transition <- function(fit, areas = c()) {
     group_by(name) |>
     mutate(diff = c(diff(e0), NA))
   
-  if(fit$model == "logistic" || fit$model == "logistic_shock") {
+  if(fit$model == "logistic" || fit$model == "logistic_shock" || fit$model == "logistic_mixture" || fit$model == "gp") {
     fit$posteriors$transition_functions |>
       filter(name %in% areas) |>
       ggplot(aes(x = x, y = transition_function_pred)) +
       geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
       scale_fill_brewer() +
       geom_point(data = data, aes(x = e0, y = diff)) +
-      facet_wrap(~name)
+      facet_wrap(~name, scales = "free_y")
   }
   else {
     fit$posteriors$transition_functions |>

@@ -1,5 +1,57 @@
 library(splines)
 
+#' @import tibble
+hierarchical_model_matrix <- function(columns, data) {
+  mat <- matrix(NA, nrow = nrow(data), ncol = 0)
+  assign <- c()
+  
+  index <- tibble::tibble(i = numeric(0), column = character(0), level = character(0))
+  
+  i <- 1
+  if("intercept" %in% columns) {
+    mat <- cbind(mat, rep(1, nrow(mat)))
+    assign <- c(assign, 0)
+    
+    index[i, ] <- tibble(i = i, column = "intercept", level = "intercept")
+    
+    i <- i + 1
+  }
+  
+  for(column in columns) {
+    for(l in levels(factor(data[[column]]))) {
+      mat <- cbind(mat, as.numeric(data[[column]] == l))
+      assign <- c(assign, which(column == columns))
+      index[i, ] <- tibble::tibble(i = i, column = column, level = l)
+      
+      i <- i + 1
+    }
+  }
+  
+  list(
+    assign = assign,
+    matrix = mat,
+    index = index
+  )
+}
+
+#' @import purrr
+hierarchical_data <- function(data, hierarchy) {
+  model_matrix <- hierarchical_model_matrix(hierarchy, data)
+  n_terms <- ncol(model_matrix$mat)
+  re <- unique(model_matrix$assign)
+  n_re <- length(re)
+  re_start <- map_int(re, function(x) min(which(model_matrix$assign == x)))
+  re_end   <- map_int(re, function(x) max(which(model_matrix$assign == x)))
+  
+  list(
+    model_matrix = model_matrix,
+    n_terms = n_terms,
+    n_re = n_re,
+    re_start = re_start,
+    re_end = re_end
+  )
+}
+
 #' Fit Lifeplus model
 #'
 #' @param data a data frame.
@@ -42,6 +94,8 @@ lifeplus <- function(
   country_specific_global_shrinkage = FALSE,
   
   extra_stan_data = list(),
+  
+  hierarchical_splines = c("intercept", area),
   
   # Out-of-sample validation
   held_out = FALSE,
@@ -112,6 +166,12 @@ lifeplus <- function(
   else if(model == "logistic_shock") {
     stan_file_path <- "stan/life_double_logistic_shock.stan"
   }
+  else if(model == "logistic_mixture") {
+    stan_file_path <- "stan/life_double_logistic_mixture.stan"
+  }
+  else if(model == "gp") {
+    stan_file_path <- "stan/life_gp.stan"
+  }
   else {
     stop(glue::glue("Model {model} not supported. Currently \"spline\" is the only supported model."))
   }
@@ -119,7 +179,6 @@ lifeplus <- function(
   stan_model <- cmdstanr::cmdstan_model(
     stan_file_path,
     dir = tempdir()
-    #include_paths = include_paths
   )
   
   #
@@ -151,9 +210,13 @@ lifeplus <- function(
   
   t_last <- max(data$t)
   
+  a_data       <- hierarchical_data(country_index, hierarchical_splines)
+  
   # Set up spline basis
-  if(model == "logistic" || model == "logistic_shock") {
-    grid <- c(seq(from = 0, to = 110, by = 5)) # generating inputs
+  knots <- sort(c(seq(0, (max(data[[y]]) - 15) / (110 - 15), length.out = num_knots), 1, 2))
+  
+  if(model == "logistic" || model == "logistic_shock" || model == "logistic_mixture" || model == "gp") {
+    grid <- c(seq(from = 0, to = 110, by = 1)) # generating inputs
   }
   else {
     grid <- c(seq(from = 0, to = 1, by = .05)) # generating inputs
@@ -167,22 +230,85 @@ lifeplus <- function(
     obs <- data[held_out == 0,] |> select(t, c, e0) |> pivot_wider(names_from = "t", values_from = "e0") |> select(-c) |> as.matrix()
   }
   
-  stan_data <- c(extra_stan_data, list(
-    C = nrow(obs),
-    T = ncol(obs),
-    Tpred = max(time_index$t),
-    
-    y = obs,
-    
-    hierarchical = as.numeric(hierarchical),
-    centered = as.numeric(centered),
-    
-    outlier_threshold = outlier_threshold,
-    
-    num_grid = num_grid,
-    grid = grid
-  ))
+  B <- t(bs(grid, knots = knots, degree = spline_degree, intercept = FALSE))
+  B <- B[1:(nrow(B) - 1), ]
+  num_grid <- length(grid)
+  num_basis <- nrow(B)
+  ext_knots <- c(rep(knots[1], spline_degree), knots, rep(knots[length(knots)], spline_degree))
   
+  a_lower_bound <- 0.01
+  a_upper_bound <- 10 
+  
+  if(model == "shock2" || model == "spline") {
+    stan_data <- c(extra_stan_data, list(
+      C = nrow(country_index),
+      T = nrow(time_index),
+      N = nrow(data),
+      held_out = held_out,
+      t_last = t_last,
+      
+      time = array(data$t),
+      country = array(data$c),
+      
+      y = array(data[[y]]),
+      
+      outlier_threshold = outlier_threshold,
+      
+      a_n_terms = a_data$n_terms,
+      a_n_re = a_data$n_re,
+      a_re_start = array(a_data$re_start),
+      a_re_end = array(a_data$re_end),
+      a_model_matrix = a_data$model_matrix$mat,
+      
+      # Spline settings
+      num_knots = length(knots),
+      knots = knots,
+      
+      num_grid = num_grid,
+      spline_degree = spline_degree,
+      grid = grid,
+      B = B,
+      
+      a_lower_bound = a_lower_bound,
+      a_upper_bound = a_upper_bound,
+      R = R
+    ))
+  }
+  else {
+    stan_data <- c(extra_stan_data, list(
+      C = nrow(obs),
+      T = ncol(obs),
+      Tpred = max(time_index$t),
+      
+      y = obs,
+      
+      hierarchical = as.numeric(hierarchical),
+      centered = as.numeric(centered),
+      
+      outlier_threshold = outlier_threshold,
+      
+      num_grid = num_grid,
+      grid = grid,
+      
+      a_n_terms = a_data$n_terms,
+      a_n_re = a_data$n_re,
+      a_re_start = array(a_data$re_start),
+      a_re_end = array(a_data$re_end),
+      a_model_matrix = a_data$model_matrix$mat,
+      
+      # Spline settings
+      num_knots = length(knots),
+      knots = knots,
+      
+      spline_degree = spline_degree,
+      B = B,
+      
+      a_lower_bound = a_lower_bound,
+      a_upper_bound = a_upper_bound,
+      R = R
+    ))
+  }
+    
   fit <- stan_model$sample(
     stan_data,
     save_latent_dynamics = TRUE,

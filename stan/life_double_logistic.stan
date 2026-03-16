@@ -218,7 +218,7 @@ generated quantities {
   for(t in T:Tpred) {
     vector[C] transition = rate_double_logistic(eta[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
     for(c in 1:C) {
-      real error = normal_rng(0, epsilon_variance);
+      real error = normal_rng(0, sqrt(epsilon_variance));
       eta[c, t] = eta[c, t - 1] + transition[c] + error;
     }
     

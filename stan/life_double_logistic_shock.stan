@@ -257,13 +257,13 @@ generated quantities {
     
     vector[C] transition = rate_double_logistic(eta[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
     for(c in 1:C) {
-      real error = normal_rng(0, epsilon_variance);
+      real error = normal_rng(0, sqrt(epsilon_variance));
       eta[c, t] = eta[c, t - 1] + transition[c] + error + shock2[c, t - 1];
     }
     
     vector[C] transition_crisisfree = rate_double_logistic(eta_crisisfree[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
     for(c in 1:C) {
-      real error = normal_rng(0, epsilon_variance);
+      real error = normal_rng(0, sqrt(epsilon_variance));
       eta_crisisfree[c, t] = eta_crisisfree[c, t - 1] + transition_crisisfree[c] + error;
     }
   }

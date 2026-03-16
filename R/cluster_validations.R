@@ -4,6 +4,11 @@ library(wpp2024)
 library(tidybayes)
 #library(bayesLife)
 
+index <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+cache_path <- glue::glue("/gpfs/scratch/susmah01/shock_paper/validations-{index}.rds")
+
+#if(file.exists(cache_path)) stop("File exists")
+
 cmdstanr::set_cmdstan_path("/gpfs/data/diazi07lab/cmdstan-2.38.0/")
 
 source("R/lifeplus.R")
@@ -27,8 +32,6 @@ datM <- e0M1 |>
   mutate(year = parse_integer(str_sub(period, 1, 4)),
          source = "WPP2024")
 
-index <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-
 #
 # Validations
 #
@@ -47,11 +50,11 @@ validation_cutoff <- function(model, cutoff_year, scale_global, outlier_threshol
     
     model = model,
 
-    hierarchical = TRUE,
+    hierarchical = FALSE,
     centered = FALSE,
 
     adapt_delta = 0.999,
-    max_treedepth = 14,
+    max_treedepth = 15,
     parallel_chains = 8,
     chains = 8,
     iter_warmup = 500,
@@ -73,12 +76,14 @@ validations <- expand_grid(
   cutoff_year = c(2013, 2018),
   model = c("logistic", "logistic_shock"),
   outlier_threshold = c(5, 1e3),
-  scale_global = c(1e-2, 1e-3, 1e-4, 1e-5)
+  scale_global = c(1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8)
 ) |>
   filter(!(model == "logistic_shock" & outlier_threshold == 5)) |>
   filter(!(model == "logistic" & scale_global != 1e-2))
 
-validations <- validations[index, ]
+print(nrow(validations))
+
+validations <- validations[(1:nrow(validations) %% 18 + 1) == index, ]
 
 print(glue::glue("Starting validation index {index} with {nrow(datM)} rows for {length(unique(datM$name))} countries"))
 print(glue::glue("Cutoff: {validations$cutoff_year} model: {validations$model} outlier_threshold: {validations$outlier_threshold} scale_global: {validations$scale_global}"))
@@ -86,5 +91,5 @@ print(glue::glue("Cutoff: {validations$cutoff_year} model: {validations$model} o
 validations <- validations |>
   mutate(fit = pmap(list(model, cutoff_year, scale_global, outlier_threshold), validation_cutoff))
 
-write_rds(validations, glue::glue("/gpfs/scratch/susmah01/shock_paper/validations-{index}.rds"))
+write_rds(validations, cache_path) 
 

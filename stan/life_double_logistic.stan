@@ -220,9 +220,9 @@ generated quantities {
       real error = normal_rng(0, sqrt(epsilon_variance));
       eta[c, t] = eta[c, t - 1] + transition[c] + error;
     }
-    
-    for(i in 1:num_grid) {
-      transition_function_pred[, i] = rate_double_logistic(rep_vector(grid[i], C), Delta1, Delta2, Delta3, Delta4, k, z);
-    }
+  }
+  
+  for(i in 1:num_grid) {
+    transition_function_pred[, i] = rate_double_logistic(rep_vector(grid[i], C), Delta1, Delta2, Delta3, Delta4, k, z);
   }
 }

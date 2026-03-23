@@ -43,12 +43,12 @@ data {
   real<lower=0> outlier_threshold;
   
   int<lower=0, upper=1> constrain_negative;
-  
   real<lower=0> scale_global;
   real<lower=0> slab_scale;
   real<lower=0> slab_df;
 }
 transformed data {
+  real tau = scale_global;
   int n_shocks;
   if(constrain_negative == 1) {
     n_shocks = C * T;
@@ -92,8 +92,7 @@ transformed data {
   real prior_mu_z      = logit(( 0.4/5.0 - z_lower) / z_range);
 }
 parameters {
-  //real log_epsilon_variance;
-  real<lower=0.01> epsilon_variance;
+  real<lower=0.1, upper=1> epsilon_sd;
   
   array[hierarchical * (1 - centered)] vector[C] raw_Delta1;
   array[hierarchical * (1 - centered)] vector[C] raw_Delta2;
@@ -133,12 +132,11 @@ parameters {
   vector[n_shocks * (1 - constrain_negative)] shock_raw;
   vector[n_shocks * (constrain_negative)] shock_raw_negative;
   vector<lower=0>[n_shocks] lambda;
-  real<lower=0> tau;
+  //real<lower=0> tau;
   real<lower=0> caux;
 }
 
 transformed parameters {
-  real epsilon_sd = sqrt(epsilon_variance);
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
    
   vector[C] Delta1; 
@@ -176,7 +174,6 @@ transformed parameters {
   }
   
   matrix[C, constrain_negative == 1 ? T : T - 1] shock = rep_matrix(0, C, constrain_negative == 1 ? T : T - 1);
-  
   real<lower=0> c_slab = slab_scale * sqrt(caux);
   vector<lower=0>[n_shocks] lambda_tilde = sqrt(c_slab^2 * square (lambda) ./ (c_slab^2 + tau^2 * square(lambda)));
   if(constrain_negative == 1) {
@@ -213,7 +210,7 @@ transformed parameters {
 }
 
 model {
-  epsilon_variance ~ inv_gamma(1, 1);
+  epsilon_sd ~ normal(0, 1);
   
   if(hierarchical == 0) {
     Delta1 ~ normal(15.77, 10);
@@ -256,10 +253,15 @@ model {
     }
   }
   
-  shock_raw ~ std_normal();
+  if(constrain_negative == 1) {
+    shock_raw_negative ~ std_normal();   
+  }
+  else {
+    shock_raw ~ std_normal();
+  }
   caux ~ inv_gamma(0.5 * slab_df, 0.5 * slab_df);
   lambda ~ student_t(nu_local, 0, 1);
-  tau ~ student_t(nu_global, 0, scale_global * epsilon_sd);
+  //tau ~ student_t(nu_global, 0, scale_global * epsilon_sd);
   
   if(outlier_threshold < 1000) {
     diff[indices_below_threshold] ~ normal(to_vector(transition_function)[indices_below_threshold], epsilon_sd);
@@ -271,14 +273,18 @@ model {
 generated quantities {
   matrix[C, Tpred] eta;
   matrix[C, Tpred] eta_crisisfree;
-  matrix[C, Tpred - 1] shock2 = rep_matrix(0, C, Tpred - 1);
-  
+  matrix[C, constrain_negative == 1 ? Tpred : Tpred - 1] shock2 = rep_matrix(0, C, constrain_negative == 1 ? Tpred : Tpred - 1);
   matrix[C, num_grid] transition_function_pred;
   
   eta[1:C, 1:T] = y;
   eta_crisisfree[1:C, 1:T] = y;
   
-  shock2[1:C, 1:(T - 1)] = shock;
+  if(constrain_negative == 1) {
+    shock2[1:C, 1:T] = shock;
+  }
+  else {
+    shock2[1:C, 1:(T - 1)] = shock;
+  }
   
   for(t in T:(Tpred)) {
     for(c in 1:C) {
@@ -305,7 +311,7 @@ generated quantities {
     
     vector[C] transition_crisisfree = rate_double_logistic(eta_crisisfree[, t - 1], Delta1, Delta2, Delta3, Delta4, k, z);
     for(c in 1:C) {
-      real error = normal_rng(0, sqrt(epsilon_variance));
+      real error = normal_rng(0, epsilon_sd);
       eta_crisisfree[c, t] = eta_crisisfree[c, t - 1] + transition_crisisfree[c] + error;
     }
   }

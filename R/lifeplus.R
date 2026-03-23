@@ -83,7 +83,10 @@ lifeplus <- function(
   crisis_projections = TRUE,
   
   # Model settings
-  model = "spline",
+  transition = "logistic",
+  shock = FALSE,
+  data_model = "normal",
+  
   num_knots = 7,
   spline_degree = 2,
   outlier_threshold = 1000,
@@ -151,30 +154,11 @@ lifeplus <- function(
   #include_paths <- system.file("include", package = "BayesTransitionModels")
   #stan_file_path <- system.file("stan/tfr_spline.stan", package = "BayesTransitionModels")
   
-  if(model == "spline") {
-    stan_file_path <- "stan/life_spline.stan"
-  }
-  else if(model == "shock") {
-    stan_file_path <- "stan/life_spline_shock.stan"
-  }
-  else if(model == "shock2") {
-    stan_file_path <- "stan/life_spline_shock2.stan"
-  }
-  else if(model == "logistic") {
-    stan_file_path <- "stan/life_double_logistic.stan"
-  }
-  else if(model == "logistic_shock") {
-    stan_file_path <- "stan/life_double_logistic_shock.stan"
-  }
-  else if(model == "logistic_mixture") {
-    stan_file_path <- "stan/life_double_logistic_mixture.stan"
-  }
-  else if(model == "gp") {
-    stan_file_path <- "stan/life_gp.stan"
-  }
-  else {
-    stop(glue::glue("Model {model} not supported. Currently \"spline\" is the only supported model."))
-  }
+  stan_file_path <- paste0(
+    "stan/",
+    paste0(c(transition, data_model, ifelse(shock == TRUE, "shock", "noshock")), collapse = "_"),
+    ".stan"
+  )
   
   stan_model <- cmdstanr::cmdstan_model(
     stan_file_path,
@@ -213,14 +197,9 @@ lifeplus <- function(
   a_data       <- hierarchical_data(country_index, hierarchical_splines)
   
   # Set up spline basis
-  knots <- sort(c(seq(0, (max(data[[y]]) - 15) / (110 - 15), length.out = num_knots), 1, 2))
+  knots <- sort(c(seq(0, max(data[[y]]) / 110, length.out = num_knots), 1, 2))
   
-  if(model == "logistic" || model == "logistic_shock" || model == "logistic_mixture" || model == "gp") {
-    grid <- c(seq(from = 0, to = 110, by = 1)) # generating inputs
-  }
-  else {
-    grid <- c(seq(from = 0, to = 1, by = .05)) # generating inputs
-  }
+  grid <- c(seq(from = 0, to = 110, by = 1)) # generating inputs
   num_grid <- length(grid)
   
   if(length(held_out) == 1 && held_out == FALSE) {
@@ -239,81 +218,46 @@ lifeplus <- function(
   a_lower_bound <- 0.01
   a_upper_bound <- 10 
   
-  if(model == "shock2" || model == "spline") {
-    stan_data <- c(extra_stan_data, list(
-      C = nrow(country_index),
-      T = nrow(time_index),
-      N = nrow(data),
-      held_out = held_out,
-      t_last = t_last,
-      
-      time = array(data$t),
-      country = array(data$c),
-      
-      y = array(data[[y]]),
-      
-      outlier_threshold = outlier_threshold,
-      
-      a_n_terms = a_data$n_terms,
-      a_n_re = a_data$n_re,
-      a_re_start = array(a_data$re_start),
-      a_re_end = array(a_data$re_end),
-      a_model_matrix = a_data$model_matrix$mat,
-      
-      # Spline settings
-      num_knots = length(knots),
-      knots = knots,
-      
-      num_grid = num_grid,
-      spline_degree = spline_degree,
-      grid = grid,
-      B = B,
-      
-      a_lower_bound = a_lower_bound,
-      a_upper_bound = a_upper_bound,
-      R = R
-    ))
-  }
-  else {
-    stan_data <- c(extra_stan_data, list(
-      C = nrow(obs),
-      T = ncol(obs),
-      Tpred = max(time_index$t),
-      
-      y = obs,
-      
-      hierarchical = as.numeric(hierarchical),
-      centered = as.numeric(centered),
-      
-      outlier_threshold = outlier_threshold,
-      
-      num_grid = num_grid,
-      grid = grid,
-      
-      a_n_terms = a_data$n_terms,
-      a_n_re = a_data$n_re,
-      a_re_start = array(a_data$re_start),
-      a_re_end = array(a_data$re_end),
-      a_model_matrix = a_data$model_matrix$mat,
-      
-      # Spline settings
-      num_knots = length(knots),
-      knots = knots,
-      
-      spline_degree = spline_degree,
-      B = B,
-      
-      a_lower_bound = a_lower_bound,
-      a_upper_bound = a_upper_bound,
-      R = R
-    ))
-  }
+  stan_data <- c(extra_stan_data, list(
+    C = nrow(obs),
+    T = ncol(obs),
+    Tpred = max(time_index$t),
     
+    y = obs,
+    
+    hierarchical = as.numeric(hierarchical),
+    centered = as.numeric(centered),
+    
+    outlier_threshold = outlier_threshold,
+    
+    num_grid = num_grid,
+    grid = grid,
+    
+    # Spline settings
+    num_knots = length(knots),
+    knots = knots,
+    
+    spline_degree = spline_degree,
+    B = B,
+    
+    Delta1_constrain = 1, Delta1_lower = 0, Delta1_upper = 50,  Delta1_prior_mean = 0, Delta1_prior_sd = 1,
+    Delta2_constrain = 1, Delta2_lower = 0, Delta2_upper = 50,  Delta2_prior_mean = 0, Delta2_prior_sd = 1,
+    Delta3_constrain = 1, Delta3_lower = 0, Delta3_upper = 50,  Delta3_prior_mean = 0, Delta3_prior_sd = 1,
+    Delta4_constrain = 1, Delta4_lower = 0, Delta4_upper = 50,  Delta4_prior_mean = 0, Delta4_prior_sd = 1,
+    k_constrain = 1,      k_lower = 0,      k_upper = 10,       k_prior_mean = 0,      k_prior_sd = 1,
+    z_constrain = 1,      z_lower = 0,      z_upper = 1.15/5,   z_prior_mean = 0,      z_prior_sd = 1,
+    
+    alpha_constrain = 1,  alpha_lower = 0,  alpha_upper = 10,   alpha_prior_mean = -2, alpha_prior_sd = 2,
+    beta_constrain = 0,   beta_lower = 0,   beta_upper = 1,     beta_prior_mean = 0,   beta_prior_sd = 1
+  ))
+    
+  start <- Sys.time()
   fit <- stan_model$sample(
     stan_data,
     save_latent_dynamics = TRUE,
     ...
   )
+  elapsed <- Sys.time() - start
   
   result <- list(samples = fit,
                  data = original_data,
@@ -321,13 +265,18 @@ lifeplus <- function(
                  time_index = time_index,
                  country_index = country_index,
                  
+                 elapsed = elapsed,
+                 
                  # Save arguments
                  y = y,
                  year = year,
                  source = source,
                  area = area,
                  held_out = held_out,
-                 model = model)
+                 
+                 transition = transition,
+                 shock = shock,
+                 data_model = data_model)
   
   cat("Extracting posteriors...\n")
   

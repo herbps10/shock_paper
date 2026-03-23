@@ -54,6 +54,8 @@ data {
   real<lower=0> slab_df;
 }
 transformed data {
+  real global_shrinkage = scale_global;
+  
   int num_basis = num_knots + spline_degree - 1;
   vector[2 * spline_degree + num_knots] ext_knots;
   int num_constrained_zero = spline_degree + 1;
@@ -97,7 +99,7 @@ parameters {
 
   vector<upper=0>[n_shocks * constrain_negative] shock_raw_negative;
   vector[n_shocks * (1 - constrain_negative)] shock_raw;
-  real<lower=0> global_shrinkage;
+  //real<lower=0> global_shrinkage;
   vector<lower=0>[n_shocks] local_shrinkage; // called lambda in paper
   real<lower=0> caux;
 }
@@ -110,16 +112,13 @@ transformed parameters {
 
   matrix[C, t_last] shock = rep_matrix(0, C, t_last);
 
-  //vector[C] P_tilde = rep_vector(15, C); // Lower asymptote
-  //vector[C] P_tilde2 = 50 + inv_logit(P_tilde2_mu + P_tilde2_raw * P_tilde2_sigma) * 50; // Upper asymptote
-
   real<lower=0> c_slab = slab_scale * sqrt(caux);
   vector<lower=0>[n_shocks] truncated_local_shrinkage; // called lambda_tilde in paper
 
   {
     vector[n_shocks] shock_shrinkage;
     truncated_local_shrinkage = sqrt(c_slab^2 * square(local_shrinkage) ./ (c_slab^2 + global_shrinkage^2 * square(local_shrinkage)));
-    if(constrain_negative) {
+    if(constrain_negative == 1) {
       shock_shrinkage = shock_raw_negative .* truncated_local_shrinkage * global_shrinkage;
     }
     else {
@@ -177,9 +176,14 @@ model {
 
   epsilon_variance ~ inv_gamma(1, 1);
 
-  shock_raw ~ std_normal();
+  if(constrain_negative == 1) {
+    shock_raw_negative ~ std_normal();
+  }
+  else {
+    shock_raw ~ std_normal();
+  }
   local_shrinkage ~ student_t(nu_local, 0, 1);
-  global_shrinkage ~ student_t(nu_global, 0, scale_global * epsilon_sd);
+  //global_shrinkage ~ student_t(nu_global, 0, scale_global * epsilon_sd);
   caux ~ inv_gamma(0.5 * slab_df, 0.5 * slab_df);
 
   for(i in 1:N) {

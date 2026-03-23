@@ -21,12 +21,11 @@ data {
 
   int num_knots;
   vector[num_knots] knots;
-
   int spline_degree;
+  matrix[num_knots + spline_degree - 1, num_grid] B;
 
   int num_grid;
   vector[num_grid] grid;
-  matrix[num_knots + spline_degree - 1, num_grid] B;
 
   real a_lower_bound;
   real a_upper_bound;
@@ -52,7 +51,7 @@ transformed data {
     }
   }
 
-  real P_tilde = 15;
+  real P_tilde = 5;
   real P_tilde2 = 110;
   
   int hierarchical = 1;

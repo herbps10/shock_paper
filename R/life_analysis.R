@@ -76,7 +76,7 @@ datM |>
   #pub_theme +
   labs(x = "Year", y = expression(e[0]))
 
-ggsave("plots/life_examples.pdf", height = 5, width = 10)
+#ggsave("plots/life_examples.pdf", height = 5, width = 10)
 
 # What is the 2*SD(eps) threshold?
 threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
@@ -85,30 +85,21 @@ threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
 set.seed(4)
-random_countries <- unique(c(sample(unique(datM$name), 25), c("Republic of Korea", "Bosnia and Herzegovina", "Cambodia", "Lebanon", "Timor-Leste", "Syrian Arab Republic", "Switzerland", "Norway")))
-random_countries <- c("Republic of Korea", "Bosnia and Herzegovina", "Cambodia", "Lebanon", "Timor-Leste", "Syrian Arab Republic", "Switzerland", "Norway")
+random_countries <- unique(c(sample(unique(datM$name), 25))) #, c("Republic of Korea", "Bosnia and Herzegovina", "Cambodia", "Lebanon", "Timor-Leste", "Syrian Arab Republic", "Switzerland", "Norway")))
 
-random_countries <- "Republic of Korea"
+random_countries <- c("Oman")
+
 fits <- expand_grid(
-  #scale_global = c(1e-3, 1e-2, 1e-1),
-  #scale_global = c(1e-2, 1e-3, 1e-4, 1e-5, 1e-6),
-  scale_global = 1e-2,
-  #model = c("shock2")
-  #model = "logistic_shock",
-  #outlier_threshold = 1e3
-  #model = "logistic_shock",
-  model = c("logistic_shock", "shock2"),
-  outlier_threshold = 1e3,
-  constrain_negative = c(FALSE)
+  scale_global = 1e-1,
+  transition = c("logistic"),
+  shock = c(FALSE),
+  data_model = c("outlier"),
+  hierarchical = c(0, 1),
 ) |>
-  #bind_rows(
-  #  #tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 1e3),
-  #  #tibble(scale_global = 1e-2, model = "logistic_shock", outlier_threshold = 1e3)
-  #  tibble(scale_global = 1e-2, model = "logistic", outlier_threshold = 5)
-  #) |>
-  mutate(fit = pmap(list(scale_global, model, outlier_threshold, constrain_negative), function(scale_global, model, outlier_threshold, constrain_negative) {
+  mutate(include_prior = ifelse(transition == "gp", 1, 0)) |>
+  filter(!(data_model == "mixture" & shock == TRUE)) |>
+  mutate(fit = pmap(list(transition, shock, data_model, scale_global, hierarchical, include_prior), \(transition, shock, data_model, scale_global, hierarchical, include_prior) {
     lifeplus(
-      #datM |> filter(name %in% random_countries),
       datM |> filter(name %in% random_countries),
       y = "e0", 
       year = "year",
@@ -117,41 +108,142 @@ fits <- expand_grid(
       start_year = 1950,
       end_year = 2100,
       
-      hierarchical_splines = c("intercept", "name"),
+      transition = transition,
+      shock = shock,
+      data_model = data_model,
+      
       spline_degree = 2,
       num_knots = 7, 
       
-      hierarchical = FALSE,
+      hierarchical = hierarchical,
       centered = FALSE,
       
-      outlier_threshold = outlier_threshold,
+      outlier_threshold = 5,
       
-      model = model,
-      
-      adapt_delta = 0.99,
-      max_treedepth = 14,
+      adapt_delta = 0.95,
+      max_treedepth = 12,
       parallel_chains = 4,
       iter_warmup = 5e2,
       #iter_sampling = 1e3,
-      iter_sampling = 1e3,
+      iter_sampling = 5e2,
       
       extra_stan_data = list(
         scale_global = scale_global,
-        constrain_negative = as.numeric(constrain_negative),
         slab_scale = 10,
-        slab_df = 6
+        slab_df = 6,
+        L = 2,
+        M = 10,
+        heteroskedastic = 0,
+        include_prior = include_prior
       )
     )
   }))
 
-fits$fit[[1]]$samples$summary(c("epsilon_sigma", "alpha", "rho"))
+fits$fit[[1]]$samples$summary(c("gamma", "inner_epsilon_sigma", "outer_epsilon_sigma"))
+fits$fit[[2]]$samples$summary(c("gamma", "inner_epsilon_sigma", "outer_epsilon_sigma"))
 
-plot_transition(fits$fit[[1]])
+ggplot(fits$fit[[1]]$posteriors$transition_params, aes(y = name, x = `50%`)) +
+  geom_point(aes(color = "independent")) +
+  geom_point(aes(color = "hierarchical"), data =fits$fit[[2]]$posteriors$transition_params) +
+  facet_wrap(~variable, scales = "free_x")
+
+likelihood_ratios <- spread_draws(fits$fit[[1]]$samples$draws("likelihood_ratio"), likelihood_ratio[c, t]) |>
+  left_join(fits$fit[[1]]$country_index) |>
+  left_join(fits$fit[[1]]$time_index) |>
+  group_by(name, year) |>
+  median_qi(likelihood_ratio, .width = c(0.5))
+
+likelihood_ratios |>
+  arrange(-likelihood_ratio)
+
+likelihood_ratios |>
+  filter(name %in% c("Oman")) |>
+  ggplot(aes(x = year, y = likelihood_ratio)) +
+  geom_point() +
+  facet_wrap(~name, scales = "free_y")
+
+plot_temporal("eta", fits$fit[[1]], "Somalia")
+plot_temporal("eta", fits$fit[[2]], "Somalia")
+
+plot_mean_transition(fits$fit[[1]])
+plot_mean_transition(fits$fit[[2]])
+
+plot_transition(fits$fit[[1]], "Somalia")
+plot_transition(fits$fit[[2]], "Somalia")
+
+comp <- left_join(
+  fits$fit[[1]]$posteriors$temporal |> filter(year == 2100) |> select(name, `10%`, `50%`, `90%`),
+  fits$fit[[2]]$posteriors$temporal |> filter(year == 2100) |> select(name, `10%`, `50%`, `90%`),
+  by = "name"
+)  |>
+  mutate(ci_width.x = `90%.x` - `10%.x`, ci_width.y = `90%.y` - `10%.y`)
+
+comp |>
+  filter((ci_width.x / ci_width.y) > 3)
+
+comp |> #ggplot(aes(`50%.x`, `50%.y`)) +
+  ggplot(aes(ci_width.x, ci_width.y)) +
+  geom_point() +
+  labs(x = "independent", y = "hierarchical") +
+  geom_abline()
+
+fits$fit[[1]]$posteriors$temporal
+
+plot_temporal("eta", fits$fit[[1]])
+plot_temporal("eta_shockfree", fits$fit[[1]])
+plot_temporal("eta", fits$fit[[2]])
+plot_temporal("eta_shockfree", fits$fit[[1]], plot_data = TRUE)
+
+plot_transition(fits$fit[[1]]) + coord_cartesian(xlim = c(80, 110), ylim = c(0, 1))
+
+plot_mean_transition(fits$fit[[1]])
+
+fits$p <- map(arrange(fits, transition, data_model) |> pull(fit), \(x) plot_transition(x) + theme(legend.position = "none") + ggtitle(paste(x$transition, x$data_model, ifelse(x$shock, "shock term", ""))))
+gridExtra::grid.arrange(grobs = fits$p, ncol = 3)
+
+fits$p <- map(arrange(fits, transition, data_model) |> pull(fit), \(x) plot_temporal("eta", x) + theme(legend.position = "none") + ggtitle(paste(x$transition, x$data_model, ifelse(x$shock, "shock term", ""))))
+gridExtra::grid.arrange(grobs = fits$p, ncol = 3)
+
+plot_temporal("eta", fits$fit[[1]])
+plot_temporal("eta_shockfree", fits$fit[[2]])
+
+
+plot_shock(fits$fit[[2]])
+
+fits$fit[[1]]$samples$summary("epsilon_sigma")
+fits$fit[[2]]$samples$summary("epsilon_sigma")
+
+shinystan::launch_shinystan(fits$fit[[1]]$samples)
+
+spread_draws(fits$fit[[1]]$samples$draws("epsilon_sigma_pred"), epsilon_sigma_pred[i]) |>
+  left_join(tibble(i = 1:length(fits$fit[[1]]$stan_data$grid), x = fits$fit[[1]]$stan_data$grid)) |>
+  group_by(x) |>
+  median_qi(epsilon_sigma_pred, .width = c(0.8, 0.9, 0.95)) |>
+  ggplot(aes(x = x * 110, y = epsilon_sigma_pred)) +
+  geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
+  scale_fill_brewer()
+ 
+fits$fit[[1]]$samples$summary("epsilon_sd")
+fits$fit[[2]]$samples$summary("epsilon_sd")
+fits$fit[[3]]$samples$summary("epsilon_sd")
+
+plot_shock(fits$fit[[1]])
+plot_shock(fits$fit[[2]])
+
+plot_shock(fits$fit[[3]])
+
+plot_transition(fits$fit[[1]], "intercept")
+
 plot_transition(fits$fit[[2]])
+plot_transition(fits$fit[[3]])
 
-plot_temporal("eta", fits$fit[[1]], "Timor-Leste")
-plot_temporal("eta_crisisfree", fits$fit[[1]], "Timor-Leste")
-plot_temporal("eta", fits$fit[[2]], "Timor-Leste")
+plot_temporal("eta", fits$fit[[1]])
+plot_temporal("eta", fits$fit[[2]])
+plot_temporal("eta", fits$fit[[3]])
+
+plot_temporal("eta_crisisfree", fits$fit[[1]])
+plot_temporal("eta_crisisfree", fits$fit[[2]])
+plot_temporal("eta_crisisfree", fits$fit[[3]])
 
 fits$fit[[2]]$posteriors$temporal |>
   filter(year == 2100) |>
@@ -186,7 +278,6 @@ left_join(
   summarize(diff = sum(abs(transition_function_pred.x - transition_function_pred.y))) |>
   arrange(diff)
   
-
 Delta_shock <- gather_draws(fit_shock$samples$draws(c("Delta1", "Delta2", "Delta3", "Delta4", "k", "z")), Delta1[c], Delta2[c], Delta3[c], Delta4[c], k[c], z[c])
 Delta_noshock <- gather_draws(fit_noshock$samples$draws(c("Delta1", "Delta2", "Delta3", "Delta4", "k", "z")), Delta1[c], Delta2[c], Delta3[c], Delta4[c], k[c], z[c])
 

@@ -32,7 +32,7 @@ plot_P_tilde <- function(fit) {
 
 plot_mean_transition <- function(fit) {
   fit$posteriors$transition_function_mean |>
-    ggplot(aes(x = 15 + x * (85 - 15), y = transition_function_mean)) +
+    ggplot(aes(x = x, y = transition_function_pred_mean)) +
     geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
     scale_fill_brewer()
 }
@@ -43,31 +43,19 @@ plot_transition <- function(fit, areas = c()) {
     areas <- unique(fit$data$name)
   }
   
-  
   data <- fit$data |>
     filter(name %in% areas) |>
     arrange(name, period) |>
     group_by(name) |>
     mutate(diff = c(diff(e0), NA))
   
-  if(fit$model == "logistic" || fit$model == "logistic_shock" || fit$model == "logistic_mixture" || fit$model == "gp") {
-    fit$posteriors$transition_functions |>
-      filter(name %in% areas) |>
-      ggplot(aes(x = x, y = transition_function_pred)) +
-      geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
-      scale_fill_brewer() +
-      geom_point(data = data, aes(x = e0, y = diff)) +
-      facet_wrap(~name, scales = "free_y")
-  }
-  else {
-    fit$posteriors$transition_functions |>
-      filter(name %in% areas) |>
-      ggplot(aes(x = 15 + x * (110 - 15), y = transition_function_pred)) +
-      geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
-      scale_fill_brewer() +
-      geom_point(data = data, aes(x = e0, y = diff)) +
-      facet_wrap(~name)
-  }
+  fit$posteriors$transition_functions |>
+    filter(name %in% areas) |>
+    ggplot(aes(x = x, y = transition_function_pred)) +
+    geom_lineribbon(aes(ymin = .lower, ymax = .upper)) +
+    scale_fill_brewer() +
+    geom_point(data = data, aes(x = e0, y = diff)) +
+    facet_wrap(~name, scales = "free_y")
 }
 
 plot_with_shocks <- function(fit, area) {

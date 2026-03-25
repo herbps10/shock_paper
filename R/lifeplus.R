@@ -240,10 +240,10 @@ lifeplus <- function(
     spline_degree = spline_degree,
     B = B,
     
-    Delta1_constrain = 1, Delta1_lower = 0, Delta1_upper = 50,  Delta1_prior_mean = 0, Delta1_prior_sd = 1,
-    Delta2_constrain = 1, Delta2_lower = 0, Delta2_upper = 50,  Delta2_prior_mean = 0, Delta2_prior_sd = 1,
-    Delta3_constrain = 1, Delta3_lower = 0, Delta3_upper = 50,  Delta3_prior_mean = 0, Delta3_prior_sd = 1,
-    Delta4_constrain = 1, Delta4_lower = 0, Delta4_upper = 50,  Delta4_prior_mean = 0, Delta4_prior_sd = 1,
+    Delta1_constrain = 1, Delta1_lower = 0,  Delta1_upper = 50,  Delta1_prior_mean = 0, Delta1_prior_sd = 1,
+    Delta2_constrain = 1, Delta2_lower = 0,  Delta2_upper = 50,  Delta2_prior_mean = 0, Delta2_prior_sd = 1,
+    Delta3_constrain = 1, Delta3_lower = 0,  Delta3_upper = 50,  Delta3_prior_mean = 0, Delta3_prior_sd = 1,
+    Delta4_constrain = 1, Delta4_lower = 5, Delta4_upper = 50,  Delta4_prior_mean = 0, Delta4_prior_sd = 1,
     k_constrain = 1,      k_lower = 0,      k_upper = 10,       k_prior_mean = 0,      k_prior_sd = 1,
     z_constrain = 1,      z_lower = 0,      z_upper = 1.15/5,   z_prior_mean = 0,      z_prior_sd = 1,
     

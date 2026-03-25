@@ -53,6 +53,9 @@ validation_cutoff <- function(model, cutoff_year, scale_global, outlier_threshol
     hierarchical = FALSE,
     centered = FALSE,
 
+    num_knots = 7,
+    spline_degree = 2,
+
     adapt_delta = 0.999,
     max_treedepth = 15,
     parallel_chains = 8,

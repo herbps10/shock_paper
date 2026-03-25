@@ -75,6 +75,14 @@ transformed data {
   vector[C * (T - 1)] diff = to_vector(y[ : , 2 : T] - y[ : , 1 : (T - 1)]);
   int shock_term = 0;
   int generate_shock_free = 0;
+  
+  int intermediate_grid_index = 0;
+  for (i in 1 : num_grid) {
+    if (grid[i] == 90) {
+      intermediate_grid_index = i;
+      break;
+    }
+  }
 }
 parameters {
   real<lower=0> epsilon_sigma;
@@ -101,8 +109,15 @@ parameters {
 transformed parameters {
   matrix[C, T - 1] shock = rep_matrix(0, C, T - 1);
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
-  vector[C] first_transition = rep_vector(0, C);
-  vector[C] final_transition = rep_vector(0, C);
+  array[include_prior] vector[C] first_transition;
+  array[include_prior] vector[C] intermediate_transition;
+  array[include_prior] vector[C] final_transition;
+  
+  if (include_prior == 1) {
+    first_transition[1] = rep_vector(0, C);
+    intermediate_transition[1] = rep_vector(0, C);
+    final_transition[1] = rep_vector(0, C);
+  }
   
   vector[C] Delta1;
   
@@ -177,16 +192,24 @@ transformed parameters {
                                   C, T - 1);
   
   if (include_prior == 1) {
-    first_transition = rate_double_logistic(rep_vector(grid[1], C), Delta1,
-                         Delta2, Delta3, Delta4, k, z);
-    final_transition = rate_double_logistic(rep_vector(grid[num_grid], C),
-                         Delta1, Delta2, Delta3, Delta4, k, z);
+    first_transition[1] = rate_double_logistic(rep_vector(grid[1], C),
+                            Delta1, Delta2, Delta3, Delta4, k, z);
+    if (intermediate_grid_index > 0) {
+      intermediate_transition[1] = rate_double_logistic(
+                                     rep_vector(
+                                                grid[intermediate_grid_index],
+                                                C),
+                                     Delta1, Delta2, Delta3, Delta4, k, z);
+    }
+    final_transition[1] = rate_double_logistic(rep_vector(grid[num_grid], C),
+                            Delta1, Delta2, Delta3, Delta4, k, z);
   }
 }
 model {
   if (include_prior == 1) {
-    to_vector(first_transition) ~ normal(0, 25);
-    to_vector(final_transition) ~ normal(1.15 / 10, 0.5);
+    to_vector(first_transition[1]) ~ normal(0, 25);
+    to_vector(intermediate_transition[1]) ~ normal(0, 5);
+    to_vector(final_transition[1]) ~ normal(1.15 / 10, 0.5);
   }
   
   epsilon_sigma ~ std_normal();

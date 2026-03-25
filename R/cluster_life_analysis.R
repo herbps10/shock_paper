@@ -1,8 +1,6 @@
 library(tidyverse)
 library(wpp2024)
-#library(BayesTransitionModels)
 library(tidybayes)
-#library(bayesLife)
 
 cmdstanr::set_cmdstan_path("/gpfs/data/diazi07lab/cmdstan-2.38.0/")
 
@@ -33,15 +31,9 @@ fits <- expand_grid(
   scale_global = c(1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8),
   model = c("logistic_shock", "logistic"),
   outlier_threshold = c(5, 1e3),
-<<<<<<< HEAD
   centered = c(TRUE, FALSE),
   hierarchical = c(TRUE),
   config = c("low")
-=======
-  centered = c(FALSE),
-  hierarchical = c(TRUE),
-  config = c("high")
->>>>>>> a7af41da1d910f44c3453064dbcd563b81e769e4
 ) |>
   filter(!(model == "logistic_shock" & outlier_threshold == 5)) |>
   filter(!(model == "logistic" & scale_global != 1e-2)) |>

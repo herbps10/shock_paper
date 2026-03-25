@@ -58,8 +58,11 @@ transformed parameters {
   }
   
   if(include_prior == 1) {
-    for(c in 1:C) first_transition[c] = rate_spline(grid[1] / 110, 0, 1, alpha[c], ext_knots, num_basis, spline_degree);
-    for(c in 1:C) final_transition[c] = rate_spline(grid[num_grid] / 110, 0, 1, alpha[c], ext_knots, num_basis, spline_degree);
+    for(c in 1:C) first_transition[1][c] = rate_spline(grid[1] / 110, 0, 1, alpha[c], ext_knots, num_basis, spline_degree);
+    if(intermediate_grid_index > 0) {
+      for(c in 1:C) intermediate_transition[1][c] = rate_spline(grid[intermediate_grid_index] / 110, 0, 1, alpha[c], ext_knots, num_basis, spline_degree);
+    }
+    for(c in 1:C) final_transition[1][c] = rate_spline(grid[num_grid] / 110, 0, 1, alpha[c], ext_knots, num_basis, spline_degree);
   }
 }
 model {

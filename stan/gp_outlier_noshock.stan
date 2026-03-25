@@ -58,6 +58,14 @@ transformed data {
   int shock_term = 0;
   int generate_shock_free = 0;
   
+  int intermediate_grid_index = 0;
+  for (i in 1 : num_grid) {
+    if (grid[i] == 90) {
+      intermediate_grid_index = i;
+      break;
+    }
+  }
+  
   matrix[C * (T - 1), M] PHI;
   matrix[num_grid, M] PHI_grid;
   for (m in 1 : M) {
@@ -98,8 +106,15 @@ parameters {
 transformed parameters {
   matrix[C, T - 1] shock = rep_matrix(0, C, T - 1);
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
-  vector[C] first_transition = rep_vector(0, C);
-  vector[C] final_transition = rep_vector(0, C);
+  array[include_prior] vector[C] first_transition;
+  array[include_prior] vector[C] intermediate_transition;
+  array[include_prior] vector[C] final_transition;
+  
+  if (include_prior == 1) {
+    first_transition[1] = rep_vector(0, C);
+    intermediate_transition[1] = rep_vector(0, C);
+    final_transition[1] = rep_vector(0, C);
+  }
   
   matrix[C, M] beta;
   
@@ -139,19 +154,28 @@ transformed parameters {
   
   if (include_prior == 1) {
     for (c in 1 : C) 
-      first_transition[c] = rate_gp(grid[1 : 1],
-                                    to_matrix(PHI_grid[1,  : ], 1, M),
-                                    to_vector(SPD_beta[c,  : ]))[1];
+      first_transition[1][c] = rate_gp(grid[1 : 1],
+                                       to_matrix(PHI_grid[1,  : ], 1, M),
+                                       to_vector(SPD_beta[c,  : ]))[1];
+    if (intermediate_grid_index > 0) {
+      for (c in 1 : C) 
+        intermediate_transition[1][c] = rate_gp(grid[1 : 1],
+                                                to_matrix(PHI_grid[1,  : ],
+                                                          1, M),
+                                                to_vector(SPD_beta[c,  : ]))[1];
+    }
     for (c in 1 : C) 
-      final_transition[c] = rate_gp(grid[num_grid : num_grid],
-                                    to_matrix(PHI_grid[num_grid,  : ], 1, M),
-                                    to_vector(SPD_beta[c,  : ]))[1];
+      final_transition[1][c] = rate_gp(grid[num_grid : num_grid],
+                                       to_matrix(PHI_grid[num_grid,  : ], 1,
+                                                 M),
+                                       to_vector(SPD_beta[c,  : ]))[1];
   }
 }
 model {
   if (include_prior == 1) {
-    to_vector(first_transition) ~ normal(0, 25);
-    to_vector(final_transition) ~ normal(1.15 / 10, 0.5);
+    to_vector(first_transition[1]) ~ normal(0, 25);
+    to_vector(intermediate_transition[1]) ~ normal(0, 5);
+    to_vector(final_transition[1]) ~ normal(1.15 / 10, 0.5);
   }
   
   epsilon_sigma ~ std_normal();

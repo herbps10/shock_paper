@@ -29,8 +29,11 @@ transformed parameters {
     ), C, T - 1);
   
   if(include_prior == 1) {
-    first_transition = rate_double_logistic(rep_vector(grid[1], C), Delta1, Delta2, Delta3, Delta4, k, z);
-    final_transition = rate_double_logistic(rep_vector(grid[num_grid], C), Delta1, Delta2, Delta3, Delta4, k, z);
+    first_transition[1] = rate_double_logistic(rep_vector(grid[1], C), Delta1, Delta2, Delta3, Delta4, k, z);
+    if(intermediate_grid_index > 0) {
+      intermediate_transition[1] = rate_double_logistic(rep_vector(grid[intermediate_grid_index], C), Delta1, Delta2, Delta3, Delta4, k, z);
+    }
+    final_transition[1] = rate_double_logistic(rep_vector(grid[num_grid], C), Delta1, Delta2, Delta3, Delta4, k, z);
   }
 }
 generated quantities {

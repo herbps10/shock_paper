@@ -75,6 +75,7 @@ transformed data {
       break;
     }
   }
+  print(intermediate_grid_index);
   
   int num_basis = num_knots + spline_degree - 1;
   vector[2 * spline_degree + num_knots] ext_knots;
@@ -153,7 +154,7 @@ transformed parameters {
 model {
   if (include_prior == 1) {
     to_vector(first_transition[1]) ~ normal(0, 25);
-    to_vector(intermediate_transition[1]) ~ normal(0, 5);
+    to_vector(intermediate_transition[1]) ~ normal(0, 4);
     to_vector(final_transition[1]) ~ normal(1.15 / 10, 0.5);
   }
   

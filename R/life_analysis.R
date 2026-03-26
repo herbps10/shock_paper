@@ -85,26 +85,21 @@ threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
 set.seed(5)
-random_countries <- unique(c(sample(unique(datM$name), 25))) #, c("Republic of Korea", "Bosnia and Herzegovina", "Cambodia", "Lebanon", "Timor-Leste", "Syrian Arab Republic", "Switzerland", "Norway")))
-
-countries <- tibble(name = unique(datM$name)) |> mutate(group = sample(1:4, size = n(), replace = TRUE))
-
-datM <- datM |>
-  left_join(countries)
+random_countries <- unique(c(sample(unique(datM$name), 25), "Somalia"))
 
 fits <- expand_grid(
   scale_global = c(1e-2),
   transition = c("gp"),
   shock = c(TRUE),
   data_model = c("normal"),
-  hierarchical = c(0),
-  include_prior = c(0, 1)
+  hierarchical = c(1),
+  include_prior = c(1)
 ) |>
   #mutate(include_prior = ifelse(transition == "gp", 1, 0)) |>
   filter(!(data_model == "mixture" & shock == TRUE)) |>
   mutate(fit = pmap(list(transition, shock, data_model, scale_global, hierarchical, include_prior), \(transition, shock, data_model, scale_global, hierarchical, include_prior) {
     lifeplus(
-      datM |> filter(name == "Somalia"),
+      datM |> filter(name %in% random_countries),
       y = "e0", 
       year = "year",
       area = "name",
@@ -124,7 +119,7 @@ fits <- expand_grid(
       
       outlier_threshold = 5,
       
-      adapt_delta = 0.90,
+      adapt_delta = 0.95,
       max_treedepth = 12,
       parallel_chains = 4,
       iter_warmup = 250,
@@ -135,12 +130,13 @@ fits <- expand_grid(
         scale_global = scale_global,
         slab_scale = 10,
         slab_df = 6,
-        L = 2,
-        M = 10,
+        L = 1.5,
+        M = 15,
         heteroskedastic = 0,
         include_prior = include_prior
       )
     )
   }))
 
-plot_transition(fits$fit[[1]])
+plot_transition(fits$fit[[1]], "Somalia")
+plot_mean_transition(fits$fit[[1]])

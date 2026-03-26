@@ -75,6 +75,7 @@ transformed data {
       break;
     }
   }
+  print(intermediate_grid_index);
   
   matrix[C * (T - 1), M] PHI;
   matrix[num_grid, M] PHI_grid;
@@ -157,7 +158,8 @@ transformed parameters {
                                        to_vector(SPD_beta[c,  : ]))[1];
     if (intermediate_grid_index > 0) {
       for (c in 1 : C) 
-        intermediate_transition[1][c] = rate_gp(grid[1 : 1],
+        intermediate_transition[1][c] = rate_gp(
+                                                grid[intermediate_grid_index : intermediate_grid_index],
                                                 to_matrix(PHI_grid[1,  : ],
                                                           1, M),
                                                 to_vector(SPD_beta[c,  : ]))[1];
@@ -172,7 +174,7 @@ transformed parameters {
 model {
   if (include_prior == 1) {
     to_vector(first_transition[1]) ~ normal(0, 25);
-    to_vector(intermediate_transition[1]) ~ normal(0, 5);
+    to_vector(intermediate_transition[1]) ~ normal(0, 4);
     to_vector(final_transition[1]) ~ normal(1.15 / 10, 0.5);
   }
   

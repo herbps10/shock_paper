@@ -112,6 +112,7 @@ transformed data {
       break;
     }
   }
+  print(intermediate_grid_index);
   
   shock_term = 1;
   generate_shock_free = 1;
@@ -259,7 +260,7 @@ transformed parameters {
 model {
   if (include_prior == 1) {
     to_vector(first_transition[1]) ~ normal(0, 25);
-    to_vector(intermediate_transition[1]) ~ normal(0, 5);
+    to_vector(intermediate_transition[1]) ~ normal(0, 4);
     to_vector(final_transition[1]) ~ normal(1.15 / 10, 0.5);
   }
   

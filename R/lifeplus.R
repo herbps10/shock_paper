@@ -240,15 +240,27 @@ lifeplus <- function(
     spline_degree = spline_degree,
     B = B,
     
-    Delta1_constrain = 1, Delta1_lower = 0,  Delta1_upper = 50,  Delta1_prior_mean = 0, Delta1_prior_sd = 1,
-    Delta2_constrain = 1, Delta2_lower = 0,  Delta2_upper = 50,  Delta2_prior_mean = 0, Delta2_prior_sd = 1,
-    Delta3_constrain = 1, Delta3_lower = 0,  Delta3_upper = 50,  Delta3_prior_mean = 0, Delta3_prior_sd = 1,
-    Delta4_constrain = 1, Delta4_lower = 5, Delta4_upper = 50,  Delta4_prior_mean = 0, Delta4_prior_sd = 1,
-    k_constrain = 1,      k_lower = 0,      k_upper = 10,       k_prior_mean = 0,      k_prior_sd = 1,
-    z_constrain = 1,      z_lower = 0,      z_upper = 1.15/5,   z_prior_mean = 0,      z_prior_sd = 1,
+    D = 6,
+    Delta_constrain   = c(1, 1, 1, 1, 1, 1),
+    Delta_lower       = c(0, 0, 0, 5, 0, 0),
+    Delta_upper       = c(50, 50, 50, 50, 10, 1.15/5),
+    Delta_prior_mean  = c(0, 0, 0, 0, 0, 0),
+    Delta_prior_sd    = c(1, 1, 1, 1, 1, 1),
+    Delta_sigma_lower = c(0, 0, 0, 0, 0, 0),
     
-    alpha_constrain = 1,  alpha_lower = 0,  alpha_upper = 10,   alpha_prior_mean = -2, alpha_prior_sd = 2,
-    beta_constrain = 0,   beta_lower = 0,   beta_upper = 1,     beta_prior_mean = 0,   beta_prior_sd = 1
+    alpha_constrain   = c(1),
+    alpha_lower       = c(0),
+    alpha_upper       = c(10),
+    alpha_prior_mean  = c(-2),
+    alpha_prior_sd    = c(2),
+    alpha_sigma_lower = c(0),
+    
+    beta_constrain    = c(0),
+    beta_lower        = c(0),
+    beta_upper        = c(1),
+    beta_prior_mean   = c(0),
+    beta_prior_sd     = c(1),
+    beta_sigma_lower  = c(0)
   ))
     
   start <- Sys.time()

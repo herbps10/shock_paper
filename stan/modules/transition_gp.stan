@@ -10,7 +10,6 @@ functions {
 parameters {
   real<lower=0> rho;
   real<lower=0> alpha;
-  //matrix[C, M] beta;
 }
 transformed parameters {
   row_vector[M] diagSPD;
@@ -38,7 +37,6 @@ transformed parameters {
 model {
   alpha ~ std_normal();
   rho ~ inv_gamma(5, 5);
-  //to_vector(beta) ~ std_normal();
 }
 generated quantities {
   // With shocks

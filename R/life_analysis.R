@@ -84,16 +84,16 @@ threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 # How many of the observed differences fall below this threshold?
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
-set.seed(5)
-random_countries <- unique(c(sample(unique(datM$name), 25), "Somalia"))
+set.seed(6)
+random_countries <- unique(c(sample(unique(datM$name), 35), "Somalia"))
 
 fits <- expand_grid(
-  scale_global = c(1e-2),
-  transition = c("gp"),
+  scale_global = c(1e-1),
+  transition = c("logistic"),
   shock = c(TRUE),
   data_model = c("normal"),
   hierarchical = c(1),
-  include_prior = c(1)
+  include_prior = c(0)
 ) |>
   #mutate(include_prior = ifelse(transition == "gp", 1, 0)) |>
   filter(!(data_model == "mixture" & shock == TRUE)) |>
@@ -105,7 +105,7 @@ fits <- expand_grid(
       area = "name",
       source = "source",
       start_year = 1950,
-      end_year = 2025,
+      end_year = 2050,
       
       transition = transition,
       shock = shock,
@@ -119,24 +119,49 @@ fits <- expand_grid(
       
       outlier_threshold = 5,
       
-      adapt_delta = 0.95,
+      adapt_delta = 0.90,
       max_treedepth = 12,
       parallel_chains = 4,
       iter_warmup = 250,
       #iter_sampling = 1e3,
-      iter_sampling = 5e2,
+      iter_sampling = 500,
       
       extra_stan_data = list(
         scale_global = scale_global,
         slab_scale = 10,
         slab_df = 6,
         L = 1.5,
-        M = 15,
+        M = 25,
         heteroskedastic = 0,
         include_prior = include_prior
       )
     )
   }))
 
+np <- nuts_params(fits$fit[[1]]$samples)
+
+bayesplot::mcmc_pairs(
+  fits$fit[[1]]$samples$draws(paste0("raw_", c("Delta[1,1]", "Delta[1,2]", "Delta[1,3]", "Delta[1,4]", "Delta[1,5]", "Delta[1,6]")))
+)
+
+fits$fit[[1]]$posteriors$transition_params |>
+  ggplot(aes(x = `50%`, y = name)) +
+  geom_point() +
+  facet_wrap(~variable, scales = "free_x")
+
 plot_transition(fits$fit[[1]], "Somalia")
 plot_mean_transition(fits$fit[[1]])
+
+fits$fit[[1]]$samples$draws("shock2")
+
+fits$fit[[1]]$posteriors$temporal |>
+  filter(variable == "shock2") |>
+  ggplot(aes(x = year, y = `50%`)) +
+  geom_line(aes(y = `0.1%`)) +
+  geom_line(aes(y = `99.9%`))
+
+fits$fit[[1]]$posteriors$temporal |>
+  filter(variable %in% c("eta", "eta_shockfree")) |>
+  ggplot(aes(x = year, y = `50%`, color = variable)) +
+  geom_line(aes(y = `0.1%`)) +
+  geom_line(aes(y = `99.9%`))

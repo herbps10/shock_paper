@@ -47,12 +47,8 @@ generate_config <- function(transition_model, data_model, shocks) {
   
   if(transition_model == "logistic") {
     deps <- c(deps, list(
-      "modules/hierarchical_vector.stan" = list("var" = "Delta1"),
-      "modules/hierarchical_vector.stan" = list("var" = "Delta2"),
-      "modules/hierarchical_vector.stan" = list("var" = "Delta3"),
-      "modules/hierarchical_vector.stan" = list("var" = "Delta4"),
-      "modules/hierarchical_vector.stan" = list("var" = "k"),
-      "modules/hierarchical_vector.stan" = list("var" = "z"),
+      "modules/Delta.stan" = c(),
+      "modules/hierarchical_matrix.stan" = list("var" = "Delta", num = "D"),
       "modules/transition_double_logistic.stan" = c()
     ))
   }

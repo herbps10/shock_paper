@@ -36,22 +36,31 @@ process_life_fit <- function(fit, parallel_chains = NULL) {
       median_qi(transition_function_pred_mean, .width = c(0.5, 0.8, 0.95))
   }
   
-  transition_params <- NULL
+  transition_params <- transition_params_corr <- NULL
   if(fit$transition == "logistic") {
-    transition_params <- fit$samples$summary(c("Delta1", "Delta2", "Delta3", "Delta4", "k", "z"), ~stats::quantile(.x, probs = c(0.001, 0.01, 0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975, 0.99, 0.999)), .cores = parallel_chains)  |>
+    transition_params <- fit$samples$summary(c("Delta"), ~stats::quantile(.x, probs = c(0.001, 0.01, 0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975, 0.99, 0.999)), posterior::default_convergence_measures(), .cores = parallel_chains)  |>
       mutate_at(vars(ends_with("%")), as.numeric) |>
-      tidyr::separate(.data$variable, c("variable", "index"), "\\[") |>
-      dplyr::mutate(index = stringr::str_replace_all(.data$index, "\\]", "")) |>
+      tidyr::separate(.data$variable, c("variable", "k", "index"), ",|\\[") |>
+      dplyr::mutate(
+        index = stringr::str_replace_all(.data$index, "\\]", "")
+      ) |>
       tidyr::separate(.data$index, c("c"), ",") |>
       dplyr::mutate_at(vars(c), as.integer) |>
       dplyr::left_join(fit$country_index, by = "c")
+    
+    transition_params_corr <- fit$samples$summary("Omega_Delta") |>
+      tidyr::separate(.data$variable, c("variable", "k1", "k2"), ",|\\[") |>
+      dplyr::mutate(
+        k2 = stringr::str_replace_all(.data$k2, "\\]", "")
+      )
   }
   
   ans <- list(
     temporal = temporal,
     transition_params = transition_params,
     transition_functions = transition_functions,
-    transition_function_mean = transition_function_mean
+    transition_function_mean = transition_function_mean,
+    transition_params_corr = transition_params_corr
   )
   
   ans

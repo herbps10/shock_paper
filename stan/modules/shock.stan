@@ -28,7 +28,7 @@ parameters {
 transformed parameters {
   real<lower=0> c_slab = slab_scale * sqrt(caux);
   vector<lower=0>[C * (T - 1)] lambda_tilde = sqrt(c_slab^2 * square (lambda) ./ (c_slab^2 + tau^2 * square(lambda)));
-  shock = to_matrix(shock_raw .* lambda_tilde * tau, C, T - 1);
+  shock = to_matrix(shock_raw .* lambda_tilde * tau * epsilon_sigma, C, T - 1);
 }
 model {
   shock_raw ~ std_normal();
@@ -37,6 +37,8 @@ model {
   //tau ~ student_t(nu_global, 0, scale_global * epsilon_sigma);
 }
 generated quantities {
+  real lambda_tilde_sd = sd(lambda_tilde);
+  
   for(t in T:(Tpred - 1)) {
     for(c in 1:C) {
       shock2[c, t - 1] = shock_rng(nu_local, c_slab, tau);

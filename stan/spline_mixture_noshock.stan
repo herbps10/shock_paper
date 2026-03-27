@@ -111,7 +111,6 @@ parameters {
   matrix[C, num_basis] raw_alpha;
   array[hierarchical] vector[num_basis] mu_alpha;
   array[hierarchical] vector<lower=0>[num_basis] sigma_alpha;
-  array[hierarchical] cholesky_factor_corr[num_basis] L_Omega_alpha;
 }
 transformed parameters {
   matrix[C, T - 1] shock = rep_matrix(0, C, T - 1);
@@ -128,15 +127,13 @@ transformed parameters {
   
   matrix[C, num_basis] alpha;
   
-  if (hierarchical == 1) {
-    alpha = rep_matrix(mu_alpha[1]', C)
-            + (diag_pre_multiply(sigma_alpha[1], L_Omega_alpha[1])
-               * raw_alpha')';
-  } else {
-    alpha = raw_alpha;
-  }
-  
   for (n in 1 : num_basis) {
+    if (hierarchical == 1) {
+      alpha[ : , n] = mu_alpha[1][n] + sigma_alpha[1][n] * raw_alpha[ : , n];
+    } else {
+      alpha[ : , n] = raw_alpha;
+    }
+    
     if (alpha_constrain[n] == 1) {
       alpha[ : , n] = inv_logit(alpha[ : , n])
                       * (alpha_upper[n] - alpha_lower[n]) + alpha_lower[n];
@@ -195,7 +192,6 @@ model {
     to_vector(raw_alpha) ~ std_normal();
     mu_alpha[1] ~ normal(alpha_prior_mean, alpha_prior_sd);
     sigma_alpha[1] ~ std_normal();
-    L_Omega_alpha[1] ~ lkj_corr_cholesky(1.0);
   } else {
     to_vector(raw_alpha) ~ normal(alpha_prior_mean, alpha_prior_sd);
   }
@@ -242,10 +238,6 @@ generated quantities {
   epsilon_params[1] = gamma;
   epsilon_params[2] = inner_epsilon_sigma;
   epsilon_params[3] = outer_epsilon_sigma;
-  
-  corr_matrix[num_basis * hierarchical] Omega_alpha;
-  if (hierarchical) 
-    Omega_alpha = multiply_lower_tri_self_transpose(L_Omega_alpha[1]);
   
   for (t in (T + 1) : Tpred) {
     for (c in 1 : C) {

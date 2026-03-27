@@ -45,6 +45,9 @@ data {
   real L;
   int<lower=1> M;
   
+  real<lower=0> epsilon_sigma_prior_mu;
+  real<lower=0> epsilon_sigma_prior_sd;
+  
   array[M] int<lower=0, upper=1> beta_constrain;
   vector[M] beta_lower;
   vector[M] beta_upper;
@@ -82,7 +85,6 @@ parameters {
   matrix[C, M] raw_beta;
   array[hierarchical] vector[M] mu_beta;
   array[hierarchical] vector<lower=0>[M] sigma_beta;
-  array[hierarchical] cholesky_factor_corr[M] L_Omega_beta;
   
   real<lower=0> rho;
   real<lower=0> alpha;
@@ -102,14 +104,13 @@ transformed parameters {
   
   matrix[C, M] beta;
   
-  if (hierarchical == 1) {
-    beta = rep_matrix(mu_beta[1]', C)
-           + (diag_pre_multiply(sigma_beta[1], L_Omega_beta[1]) * raw_beta')';
-  } else {
-    beta = raw_beta;
-  }
-  
   for (n in 1 : M) {
+    if (hierarchical == 1) {
+      beta[ : , n] = mu_beta[1][n] + sigma_beta[1][n] * raw_beta[ : , n];
+    } else {
+      beta[ : , n] = raw_beta;
+    }
+    
     if (beta_constrain[n] == 1) {
       beta[ : , n] = inv_logit(beta[ : , n])
                      * (beta_upper[n] - beta_lower[n]) + beta_lower[n];
@@ -164,7 +165,7 @@ model {
     to_vector(final_transition[1]) ~ normal(1.15 / 10, 0.5);
   }
   
-  epsilon_sigma ~ std_normal();
+  epsilon_sigma ~ normal(epsilon_sigma_prior_mu, epsilon_sigma_prior_sd);
   diff ~ normal(to_vector(transition_function) + to_vector(shock),
                 epsilon_sigma);
   
@@ -172,7 +173,6 @@ model {
     to_vector(raw_beta) ~ std_normal();
     mu_beta[1] ~ normal(beta_prior_mean, beta_prior_sd);
     sigma_beta[1] ~ std_normal();
-    L_Omega_beta[1] ~ lkj_corr_cholesky(1.0);
   } else {
     to_vector(raw_beta) ~ normal(beta_prior_mean, beta_prior_sd);
   }
@@ -202,10 +202,6 @@ generated quantities {
   
   vector[1] epsilon_params;
   epsilon_params[1] = epsilon_sigma;
-  
-  corr_matrix[M * hierarchical] Omega_beta;
-  if (hierarchical) 
-    Omega_beta = multiply_lower_tri_self_transpose(L_Omega_beta[1]);
   
   for (t in (T + 1) : Tpred) {
     for (c in 1 : C) {

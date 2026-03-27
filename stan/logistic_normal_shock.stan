@@ -57,6 +57,9 @@ data {
   real<lower=0> slab_scale;
   real<lower=0> slab_df;
   
+  real<lower=0> epsilon_sigma_prior_mu;
+  real<lower=0> epsilon_sigma_prior_sd;
+  
   int<lower=1> D;
   
   array[D] int<lower=0, upper=1> Delta_constrain;
@@ -116,7 +119,8 @@ transformed parameters {
                                                    ./ (c_slab ^ 2
                                                        + tau ^ 2
                                                          * square(lambda)));
-  shock = to_matrix(shock_raw .* lambda_tilde * tau, C, T - 1);
+  shock = to_matrix(shock_raw .* lambda_tilde * tau * epsilon_sigma, C,
+                    T - 1);
   
   matrix[C, D] Delta;
   
@@ -175,7 +179,7 @@ model {
   caux ~ inv_gamma(0.5 * slab_df, 0.5 * slab_df);
   lambda ~ student_t(nu_local, 0, 1);
   
-  epsilon_sigma ~ std_normal();
+  epsilon_sigma ~ normal(epsilon_sigma_prior_mu, epsilon_sigma_prior_sd);
   diff ~ normal(to_vector(transition_function) + to_vector(shock),
                 epsilon_sigma);
   
@@ -185,7 +189,10 @@ model {
     sigma_Delta[1] ~ std_normal();
     L_Omega_Delta[1] ~ lkj_corr_cholesky(1.0);
   } else {
-    to_vector(raw_Delta) ~ normal(Delta_prior_mean, Delta_prior_sd);
+    for (d in 1 : D) {
+      to_vector(raw_Delta[ : , d]) ~ normal(Delta_prior_mean[d],
+                                            Delta_prior_sd[d]);
+    }
   }
 }
 generated quantities {
@@ -207,6 +214,8 @@ generated quantities {
   
   matrix[C, num_grid] transition_function_pred;
   vector[num_grid * hierarchical] transition_function_pred_mean;
+  
+  real lambda_tilde_sd = sd(lambda_tilde);
   
   for (t in T : (Tpred - 1)) {
     for (c in 1 : C) {

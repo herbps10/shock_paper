@@ -35,7 +35,9 @@ model {
     L_Omega_var[1] ~ lkj_corr_cholesky(1.0);
   }
   else {
-    to_vector(raw_var) ~ normal(var_prior_mean, var_prior_sd);
+    for(d in 1:D) {
+      to_vector(raw_var[, d]) ~ normal(var_prior_mean[d], var_prior_sd[d]);
+    }
   }
 }
 generated quantities {

@@ -103,6 +103,8 @@ lifeplus <- function(
   # Out-of-sample validation
   held_out = FALSE,
   
+  epsilon_prior = c(0, 1),
+  
   R = 1e3,
   
   # Stan settings
@@ -262,13 +264,17 @@ lifeplus <- function(
     beta_upper        = c(1),
     beta_prior_mean   = c(0),
     beta_prior_sd     = c(1),
-    beta_sigma_lower  = c(0)
+    beta_sigma_lower  = c(0),
+    
+    epsilon_sigma_prior_mu = epsilon_prior[1],
+    epsilon_sigma_prior_sd = epsilon_prior[2]
   ))
     
   start <- Sys.time()
   fit <- stan_model$sample(
     stan_data,
     save_latent_dynamics = TRUE,
+    init = 1,
     ...
   )
   elapsed <- Sys.time() - start

@@ -84,22 +84,22 @@ threshold <- 2 * fits$fit[[2]]$samples$summary("epsilon_scale")$median
 # How many of the observed differences fall below this threshold?
 mean(e0_differences$diff < -threshold, na.rm = TRUE)
 
-set.seed(6)
-random_countries <- unique(c(sample(unique(datM$name), 35), "Somalia"))
+set.seed(7)
+random_countries <- unique(c(sample(unique(datM$name), 50)))
 
 fits <- expand_grid(
   scale_global = c(1e-1),
   transition = c("logistic"),
   shock = c(TRUE),
   data_model = c("normal"),
-  hierarchical = c(1),
+  hierarchical = c(0),
   include_prior = c(0)
 ) |>
   #mutate(include_prior = ifelse(transition == "gp", 1, 0)) |>
   filter(!(data_model == "mixture" & shock == TRUE)) |>
   mutate(fit = pmap(list(transition, shock, data_model, scale_global, hierarchical, include_prior), \(transition, shock, data_model, scale_global, hierarchical, include_prior) {
     lifeplus(
-      datM |> filter(name %in% random_countries),
+      datM,
       y = "e0", 
       year = "year",
       area = "name",
@@ -126,6 +126,8 @@ fits <- expand_grid(
       #iter_sampling = 1e3,
       iter_sampling = 500,
       
+      epsilon_prior = c(0, 1),
+      
       extra_stan_data = list(
         scale_global = scale_global,
         slab_scale = 10,
@@ -138,11 +140,29 @@ fits <- expand_grid(
     )
   }))
 
+fits$fit[[1]]$samples$summary("epsilon_sigma")
+
+plot_shock(fits$fit[[1]], "Bosnia and Herzegovina")
+
+plot_temporal("eta", fits$fit[[1]], "Bosnia and Herzegovina")
+plot_transition(fits$fit[[1]], "Somalia") + coord_cartesian(ylim = c(0, 2.5))
+
 np <- nuts_params(fits$fit[[1]]$samples)
 
 bayesplot::mcmc_pairs(
-  fits$fit[[1]]$samples$draws(paste0("raw_", c("Delta[1,1]", "Delta[1,2]", "Delta[1,3]", "Delta[1,4]", "Delta[1,5]", "Delta[1,6]")))
+  fits$fit[[1]]$samples$draws(c("epsilon_sigma", "c_slab", "lambda_tilde_sd")), np = np
 )
+
+bayesplot::mcmc_pairs(
+  fits$fit[[1]]$samples$draws(c("Delta[1,1]", "Delta[1,2]", "Delta[1,3]", "Delta[1,4]", "Delta[1,5]", "Delta[1,6]", "epsilon_sigma")), np = np
+)
+
+fits$fit[[1]]$samples$draws(c("lambda_tilde")) |>
+  spread_draws(lambda_tilde[k]) |>
+  median_qi() |>
+  ggplot(aes(x = k, y = lambda_tilde)) +
+  geom_point()
+
 
 fits$fit[[1]]$posteriors$transition_params_corr |>
   ggplot(aes(x = k1, y = k2)) +

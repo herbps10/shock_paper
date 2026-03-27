@@ -172,7 +172,10 @@ model {
     sigma_Delta[1] ~ std_normal();
     L_Omega_Delta[1] ~ lkj_corr_cholesky(1.0);
   } else {
-    to_vector(raw_Delta) ~ normal(Delta_prior_mean, Delta_prior_sd);
+    for (d in 1 : D) {
+      to_vector(raw_Delta[ : , d]) ~ normal(Delta_prior_mean[d],
+                                            Delta_prior_sd[d]);
+    }
   }
 }
 generated quantities {

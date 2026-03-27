@@ -48,11 +48,13 @@ process_life_fit <- function(fit, parallel_chains = NULL) {
       dplyr::mutate_at(vars(c), as.integer) |>
       dplyr::left_join(fit$country_index, by = "c")
     
-    transition_params_corr <- fit$samples$summary("Omega_Delta") |>
-      tidyr::separate(.data$variable, c("variable", "k1", "k2"), ",|\\[") |>
-      dplyr::mutate(
-        k2 = stringr::str_replace_all(.data$k2, "\\]", "")
-      )
+    if(fit$stan_data$hierarchical == 1) {
+      transition_params_corr <- fit$samples$summary("Omega_Delta") |>
+        tidyr::separate(.data$variable, c("variable", "k1", "k2"), ",|\\[") |>
+        dplyr::mutate(
+          k2 = stringr::str_replace_all(.data$k2, "\\]", "")
+        )
+    }
   }
   
   ans <- list(

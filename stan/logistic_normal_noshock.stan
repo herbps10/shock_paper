@@ -40,6 +40,9 @@ data {
   int<lower=0, upper=1> include_prior;
   int<lower=0, upper=1> hierarchical;
   
+  real<lower=0> epsilon_sigma_prior_mu;
+  real<lower=0> epsilon_sigma_prior_sd;
+  
   int<lower=1> D;
   
   array[D] int<lower=0, upper=1> Delta_constrain;
@@ -136,7 +139,7 @@ model {
     to_vector(final_transition[1]) ~ normal(1.15 / 10, 0.5);
   }
   
-  epsilon_sigma ~ std_normal();
+  epsilon_sigma ~ normal(epsilon_sigma_prior_mu, epsilon_sigma_prior_sd);
   diff ~ normal(to_vector(transition_function) + to_vector(shock),
                 epsilon_sigma);
   
@@ -146,7 +149,10 @@ model {
     sigma_Delta[1] ~ std_normal();
     L_Omega_Delta[1] ~ lkj_corr_cholesky(1.0);
   } else {
-    to_vector(raw_Delta) ~ normal(Delta_prior_mean, Delta_prior_sd);
+    for (d in 1 : D) {
+      to_vector(raw_Delta[ : , d]) ~ normal(Delta_prior_mean[d],
+                                            Delta_prior_sd[d]);
+    }
   }
 }
 generated quantities {

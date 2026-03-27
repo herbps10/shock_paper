@@ -2,6 +2,7 @@ data {
   int<lower=0, upper=1> var_constrain;
   real var_lower;
   real var_upper;
+  real var_sigma_lower;
   real var_prior_mean;
   real var_prior_sd;
 }
@@ -14,7 +15,7 @@ transformed parameters {
   vector[C] var;
   
   if(hierarchical == 1) {
-    var = mu_var[1] + exp(sigma_var[1]) * raw_var;
+    var = mu_var[1] + (var_sigma_lower + exp(sigma_var[1])) * raw_var;
   }
   else {
     var = raw_var;

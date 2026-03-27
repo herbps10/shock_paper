@@ -6,6 +6,7 @@ functions {
 transformed data {
 }
 parameters {
+  //real<lower=0, upper=(shock_term == 1 ? 1 : positive_infinity())> epsilon_sigma;
   real<lower=0> epsilon_sigma;
 }
 model {

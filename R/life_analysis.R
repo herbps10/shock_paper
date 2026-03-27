@@ -144,6 +144,13 @@ bayesplot::mcmc_pairs(
   fits$fit[[1]]$samples$draws(paste0("raw_", c("Delta[1,1]", "Delta[1,2]", "Delta[1,3]", "Delta[1,4]", "Delta[1,5]", "Delta[1,6]")))
 )
 
+fits$fit[[1]]$posteriors$transition_params_corr |>
+  ggplot(aes(x = k1, y = k2)) +
+  geom_tile(aes(fill = median)) +
+  geom_text(aes(label = scales::number(median, accuracy = 0.01, scale = 1)), color = "white") +
+  coord_fixed() +
+  labs(x = "Delta", y = "Delta")
+
 fits$fit[[1]]$posteriors$transition_params |>
   ggplot(aes(x = `50%`, y = name)) +
   geom_point() +

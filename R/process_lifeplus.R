@@ -40,9 +40,9 @@ process_life_fit <- function(fit, parallel_chains = NULL) {
   if(fit$transition == "logistic") {
     transition_params <- fit$samples$summary(c("Delta"), ~stats::quantile(.x, probs = c(0.001, 0.01, 0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975, 0.99, 0.999)), posterior::default_convergence_measures(), .cores = parallel_chains)  |>
       mutate_at(vars(ends_with("%")), as.numeric) |>
-      tidyr::separate(.data$variable, c("variable", "k", "index"), ",|\\[") |>
+      tidyr::separate(.data$variable, c("variable", "index", "k"), ",|\\[") |>
       dplyr::mutate(
-        index = stringr::str_replace_all(.data$index, "\\]", "")
+        k = stringr::str_replace_all(.data$k, "\\]", "")
       ) |>
       tidyr::separate(.data$index, c("c"), ",") |>
       dplyr::mutate_at(vars(c), as.integer) |>

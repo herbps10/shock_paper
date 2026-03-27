@@ -153,9 +153,11 @@ lifeplus <- function(
   ###### Load model #####
   #include_paths <- system.file("include", package = "BayesTransitionModels")
   #stan_file_path <- system.file("stan/tfr_spline.stan", package = "BayesTransitionModels")
+  root <- rprojroot::is_git_root                                                                         
+  basepath <- root$find_file("stan")  
   
   stan_file_path <- paste0(
-    "stan/",
+    basepath, "/",
     paste0(c(transition, data_model, ifelse(shock == TRUE, "shock", "noshock")), collapse = "_"),
     ".stan"
   )

@@ -89,7 +89,7 @@ parameters {
   array[hierarchical] cholesky_factor_corr[D] L_Omega_Delta;
 }
 transformed parameters {
-  matrix[C, T - 1] shock = rep_matrix(0, C, T - 1);
+  matrix[C, T] shock = rep_matrix(0, C, T);
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
   array[include_prior] vector[C] first_transition;
   array[include_prior] vector[C] intermediate_transition;
@@ -180,17 +180,17 @@ generated quantities {
   matrix[C, Tpred] eta;
   
   matrix[generate_shock_free * C, generate_shock_free * Tpred] eta_shockfree;
-  matrix[shock_term * C, shock_term * (Tpred - 1)] shock2;
+  matrix[shock_term * C, shock_term * Tpred] shock2;
   if (shock_term == 1) 
-    shock2 = rep_matrix(0, C, Tpred - 1);
+    shock2 = rep_matrix(0, C, Tpred);
   
   eta[1 : C, 1 : T] = y;
   if (shock_term == 1) {
-    shock2[1 : C, 1 : (T - 1)] = shock;
+    shock2[1 : C, 1 : T] = shock;
   }
   
   if (generate_shock_free == 1) {
-    eta_shockfree[1 : C, 1 : T] = y;
+    eta_shockfree[1 : C, 1 : T] = y - shock;
   }
   
   matrix[C, num_grid] transition_function_pred;
@@ -211,7 +211,7 @@ generated quantities {
       eta[c, t] = eta[c, t - 1] + transition[c]
                   + error_rng(eta[c : c, t - 1], epsilon_params, 1);
       if (shock_term == 1) 
-        eta[c, t] += shock2[c, t - 1];
+        eta[c, t] += shock2[c, t] - shock2[c, t - 1];
     }
   }
   

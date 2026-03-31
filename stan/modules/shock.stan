@@ -1,6 +1,15 @@
 functions {
+  real normal_lub_rng(real mu, real sigma, real lb, real ub) {
+    real p_lb = normal_cdf(lb | mu, sigma);
+    real p_ub = normal_cdf(ub | mu, sigma);
+    real u = uniform_rng(p_lb, p_ub);
+    real y = mu + sigma * inv_Phi(u);
+    return y;
+  }
+
   real shock_rng(real nu_local, real c_slab, real tau) {
-    real shock_raw_pred = normal_rng(0, 1);
+    real shock_raw_pred = normal_lub_rng(0, 1, negative_infinity(), 0);
+    //real shock_raw_pred = normal_rng(0, 1);
     real local_shrinkage_pred = student_t_rng(nu_local, 0, 1);
     real truncated_local_shrinkage_pred = sqrt(square(c_slab) * square(local_shrinkage_pred) ./ (square(c_slab) + square(tau) * square(local_shrinkage_pred)));
     return shock_raw_pred * truncated_local_shrinkage_pred * tau;
@@ -19,16 +28,16 @@ transformed data {
   //int nu_global = 1;
 }
 parameters {
-  vector[C * (T - 1)] shock_raw;
-  vector<lower=0>[C * (T - 1)] lambda;
+  vector<upper=0>[C * T] shock_raw;
+  vector<lower=0>[C * T] lambda;
   real<lower=0> caux;
 
   //real<lower=0> tau;
 }
 transformed parameters {
   real<lower=0> c_slab = slab_scale * sqrt(caux);
-  vector<lower=0>[C * (T - 1)] lambda_tilde = sqrt(c_slab^2 * square (lambda) ./ (c_slab^2 + tau^2 * square(lambda)));
-  shock = to_matrix(shock_raw .* lambda_tilde * tau * epsilon_sigma, C, T - 1);
+  vector<lower=0>[C * T] lambda_tilde = sqrt(c_slab^2 * square (lambda) ./ (c_slab^2 + tau^2 * square(lambda)));
+  shock = to_matrix(shock_raw .* lambda_tilde * tau * epsilon_sigma, C, T);
 }
 model {
   shock_raw ~ std_normal();
@@ -39,9 +48,9 @@ model {
 generated quantities {
   real lambda_tilde_sd = sd(lambda_tilde);
   
-  for(t in T:(Tpred - 1)) {
+  for(t in T:Tpred) {
     for(c in 1:C) {
-      shock2[c, t - 1] = shock_rng(nu_local, c_slab, tau);
+      shock2[c, t] = shock_rng(nu_local, c_slab, tau);
     }
   }
 }

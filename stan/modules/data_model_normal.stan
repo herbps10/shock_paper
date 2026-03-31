@@ -10,12 +10,11 @@ data {
 transformed data {
 }
 parameters {
-  //real<lower=0, upper=(shock_term == 1 ? 2 : positive_infinity())> epsilon_sigma;
   real<lower=0> epsilon_sigma;
 }
 model {
   epsilon_sigma ~ normal(epsilon_sigma_prior_mu, epsilon_sigma_prior_sd);
-  diff ~ normal(to_vector(transition_function) + to_vector(shock), epsilon_sigma);
+  to_vector(y[, 2:T] - y[, 1:(T - 1)]) ~ normal(to_vector(transition_function + shock[, 2:T] - shock[, 1:(T - 1)]), epsilon_sigma);
 }
 generated quantities {
   vector[1] epsilon_params;

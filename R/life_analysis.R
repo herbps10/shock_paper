@@ -101,13 +101,66 @@ mean(e0_differences$diff < -threshold, na.rm = TRUE)
 set.seed(7)
 random_countries <- unique(c(sample(unique(datM$name), 50)))
 
+f <- function(
+  transition,
+  shock,
+  data_model,
+  scale_global,
+  hierarchical,
+  include_prior,
+  constrain_negative
+) {
+  lifeplus(
+    datM |> filter(name %in% countries),
+    y = "e0",
+    year = "year",
+    area = "name",
+    source = "source",
+    start_year = 1950,
+    end_year = 2050,
+
+    transition = transition,
+    shock = shock,
+    data_model = data_model,
+
+    spline_degree = 2,
+    num_knots = 7,
+
+    hierarchical = hierarchical,
+    centered = FALSE,
+
+    outlier_threshold = 5,
+
+    adapt_delta = 0.90,
+    max_treedepth = 12,
+    parallel_chains = 4,
+    iter_warmup = 250,
+    #iter_sampling = 1e3,
+    iter_sampling = 500,
+
+    epsilon_prior = c(0, 1),
+
+    extra_stan_data = list(
+      scale_global = scale_global,
+      slab_scale = 10,
+      slab_df = 6,
+      L = 1.5,
+      M = 25,
+      heteroskedastic = 0,
+      constrain_negative = as.integer(constrain_negative),
+      include_prior = include_prior
+    )
+  )
+}
+
 fits <- expand_grid(
   scale_global = c(1e-1),
   transition = c("logistic"),
-  shock = c(TRUE, FALSE),
-  data_model = c("normal", "outlier"),
+  shock = c(TRUE),
+  data_model = c("normal"),
   hierarchical = c(0),
-  include_prior = c(0)
+  include_prior = c(0),
+  constrain_negative = c(TRUE, FALSE),
 ) |>
   #mutate(include_prior = ifelse(transition == "gp", 1, 0)) |>
   filter(!(data_model == "outlier" & shock == TRUE)) |>
@@ -120,64 +173,20 @@ fits <- expand_grid(
         data_model,
         scale_global,
         hierarchical,
-        include_prior
+        include_prior,
+        constrain_negative
       ),
-      \(
-        transition,
-        shock,
-        data_model,
-        scale_global,
-        hierarchical,
-        include_prior
-      ) {
-        lifeplus(
-          datM |> filter(name %in% countries),
-          y = "e0",
-          year = "year",
-          area = "name",
-          source = "source",
-          start_year = 1950,
-          end_year = 2050,
-
-          transition = transition,
-          shock = shock,
-          data_model = data_model,
-
-          spline_degree = 2,
-          num_knots = 7,
-
-          hierarchical = hierarchical,
-          centered = FALSE,
-
-          outlier_threshold = 5,
-
-          adapt_delta = 0.90,
-          max_treedepth = 12,
-          parallel_chains = 4,
-          iter_warmup = 250,
-          #iter_sampling = 1e3,
-          iter_sampling = 500,
-
-          epsilon_prior = c(0, 1),
-
-          extra_stan_data = list(
-            scale_global = scale_global,
-            slab_scale = 10,
-            slab_df = 6,
-            L = 1.5,
-            M = 25,
-            heteroskedastic = 0,
-            include_prior = include_prior
-          )
-        )
-      }
+      f
     )
   )
 
-plot_temporal("eta_shockfree", fits$fit[[1]])
-plot_temporal("eta", fits$fit[[2]])
+plot_temporal("eta", fits$fit[[1]]) + coord_cartesian(ylim = c(10, 100))
+plot_temporal("eta", fits$fit[[2]]) + coord_cartesian(ylim = c(10, 100))
 
-plot_transition(fits$fit[[1]])
-plot_transition(fits$fit[[2]])
+plot_transition(fits$fit[[1]], "Republic of Korea") +
+  coord_cartesian(xlim = c(60, 90), y = c(0, 1))
+plot_transition(fits$fit[[2]], "Republic of Korea") +
+  coord_cartesian(xlim = c(60, 90), y = c(0, 1))
 
 plot_shock(fits$fit[[1]])
+plot_shock(fits$fit[[2]])

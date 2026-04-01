@@ -7,9 +7,14 @@ functions {
     return y;
   }
   
-  real shock_rng(real nu_local, real c_slab, real tau) {
-    real shock_raw_pred = normal_lub_rng(0, 1, negative_infinity(), 0);
-    
+  real shock_rng(real nu_local, real c_slab, real tau,
+                 int constrain_negative) {
+    real shock_raw_pred;
+    if (constrain_negative == 1) {
+      shock_raw_pred = normal_lub_rng(0, 1, negative_infinity(), 0);
+    } else {
+      shock_raw_pred = normal_rng(0, 1);
+    }
     real local_shrinkage_pred = student_t_rng(nu_local, 0, 1);
     real truncated_local_shrinkage_pred = sqrt(
                                                square(c_slab)
@@ -89,6 +94,7 @@ data {
   real<lower=0> scale_global;
   real<lower=0> slab_scale;
   real<lower=0> slab_df;
+  int<lower=0, upper=1> constrain_negative;
   
   array[num_basis] int<lower=0, upper=1> alpha_constrain;
   vector[num_basis] alpha_lower;
@@ -134,7 +140,7 @@ transformed data {
   real P_tilde2 = 110;
 }
 parameters {
-  vector<upper=0>[C * T] shock_raw;
+  vector<upper=(constrain_negative == 1 ? 0 : positive_infinity())>[C * T] shock_raw;
   vector<lower=0>[C * T] lambda;
   real<lower=0> caux;
   
@@ -267,7 +273,7 @@ generated quantities {
   
   for (t in T : Tpred) {
     for (c in 1 : C) {
-      shock2[c, t] = shock_rng(nu_local, c_slab, tau);
+      shock2[c, t] = shock_rng(nu_local, c_slab, tau, constrain_negative);
     }
   }
   

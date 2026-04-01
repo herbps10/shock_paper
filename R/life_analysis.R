@@ -108,7 +108,8 @@ f <- function(
   scale_global,
   hierarchical,
   include_prior,
-  constrain_negative
+  constrain_negative,
+  shock_diff_mode
 ) {
   lifeplus(
     datM |> filter(name %in% countries),
@@ -148,7 +149,8 @@ f <- function(
       M = 25,
       heteroskedastic = 0,
       constrain_negative = as.integer(constrain_negative),
-      include_prior = include_prior
+      include_prior = include_prior,
+      shock_diff_mode = shock_diff_mode
     )
   )
 }
@@ -160,7 +162,8 @@ fits <- expand_grid(
   data_model = c("normal"),
   hierarchical = c(0),
   include_prior = c(0),
-  constrain_negative = c(TRUE, FALSE),
+  constrain_negative = c(FALSE, TRUE),
+  shock_diff_mode = c(0, 1)
 ) |>
   #mutate(include_prior = ifelse(transition == "gp", 1, 0)) |>
   filter(!(data_model == "outlier" & shock == TRUE)) |>
@@ -174,7 +177,8 @@ fits <- expand_grid(
         scale_global,
         hierarchical,
         include_prior,
-        constrain_negative
+        constrain_negative,
+        shock_diff_mode
       ),
       f
     )
@@ -182,11 +186,15 @@ fits <- expand_grid(
 
 plot_temporal("eta", fits$fit[[1]]) + coord_cartesian(ylim = c(10, 100))
 plot_temporal("eta", fits$fit[[2]]) + coord_cartesian(ylim = c(10, 100))
+plot_temporal("eta", fits$fit[[3]]) + coord_cartesian(ylim = c(10, 100))
+plot_temporal("eta", fits$fit[[4]]) + coord_cartesian(ylim = c(10, 100))
+
+fits
 
 plot_transition(fits$fit[[1]], "Republic of Korea") +
   coord_cartesian(xlim = c(60, 90), y = c(0, 1))
-plot_transition(fits$fit[[2]], "Republic of Korea") +
+plot_transition(fits$fit[[4]], "Republic of Korea") +
   coord_cartesian(xlim = c(60, 90), y = c(0, 1))
 
 plot_shock(fits$fit[[1]])
-plot_shock(fits$fit[[2]])
+plot_shock(fits$fit[[4]])

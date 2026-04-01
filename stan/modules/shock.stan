@@ -34,16 +34,16 @@ transformed data {
   //int nu_global = 1;
 }
 parameters {
-  vector<upper=(constrain_negative == 1 ? 0 : positive_infinity())>[C * T] shock_raw;
-  vector<lower=0>[C * T] lambda;
+  vector<upper=(constrain_negative == 1 ? 0 : positive_infinity())>[C * T_shocks] shock_raw;
+  vector<lower=0>[C * T_shocks] lambda;
   real<lower=0> caux;
 
   //real<lower=0> tau;
 }
 transformed parameters {
   real<lower=0> c_slab = slab_scale * sqrt(caux);
-  vector<lower=0>[C * T] lambda_tilde = sqrt(c_slab^2 * square (lambda) ./ (c_slab^2 + tau^2 * square(lambda)));
-  shock = to_matrix(shock_raw .* lambda_tilde * tau * epsilon_sigma, C, T);
+  vector<lower=0>[C * T_shocks] lambda_tilde = sqrt(c_slab^2 * square (lambda) ./ (c_slab^2 + tau^2 * square(lambda)));
+  shock = to_matrix(shock_raw .* lambda_tilde * tau * epsilon_sigma, C, T_shocks);
 }
 model {
   shock_raw ~ std_normal();
@@ -54,7 +54,7 @@ model {
 generated quantities {
   real lambda_tilde_sd = sd(lambda_tilde);
   
-  for(t in T:Tpred) {
+  for(t in T:(T_shocks + Tpred - T)) {
     for(c in 1:C) {
       shock2[c, t] = shock_rng(nu_local, c_slab, tau, constrain_negative);
     }

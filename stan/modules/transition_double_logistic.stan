@@ -40,7 +40,14 @@ generated quantities {
     vector[C] transition = rate_double_logistic(eta[, t - 1], Delta[, 1], Delta[, 2], Delta[, 3], Delta[, 4], Delta[, 5], Delta[, 6]);
     for(c in 1:C) {
       eta[c, t] = eta[c, t - 1] + transition[c] + error_rng(eta[c:c, t - 1], epsilon_params, 1);
-      if(shock_term == 1) eta[c, t] += shock2[c, t] - shock2[c, t - 1];
+      if(shock_term == 1) {
+        if(shock_diff_mode == 1) {
+          eta[c, t] += shock2[c, t] - shock2[c, t - 1];
+        }
+        else {
+          eta[c, t] += shock2[c, t - 1];
+        }
+      }
     }
   }
 

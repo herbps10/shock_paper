@@ -39,6 +39,7 @@ data {
   
   int<lower=0, upper=1> include_prior;
   int<lower=0, upper=1> hierarchical;
+  int<lower=0, upper=1> shock_diff_mode;
   
   real<lower=0> outlier_threshold;
   
@@ -61,6 +62,11 @@ transformed data {
       intermediate_grid_index = i;
       break;
     }
+  }
+  
+  int T_shocks = T;
+  if (shock_diff_mode == 0) {
+    T_shocks = T - 1;
   }
   
   int n_below_threshold = 0;
@@ -88,7 +94,7 @@ parameters {
   array[hierarchical] cholesky_factor_corr[D] L_Omega_Delta;
 }
 transformed parameters {
-  matrix[C, T] shock = rep_matrix(0, C, T);
+  matrix[C, T_shocks] shock = rep_matrix(0, C, T_shocks);
   matrix[C, T - 1] transition_function = rep_matrix(0, C, T - 1);
   array[include_prior] vector[C] first_transition;
   array[include_prior] vector[C] intermediate_transition;
@@ -179,17 +185,22 @@ generated quantities {
   matrix[C, Tpred] eta;
   
   matrix[generate_shock_free * C, generate_shock_free * Tpred] eta_shockfree;
-  matrix[shock_term * C, shock_term * Tpred] shock2;
+  matrix[shock_term * C, shock_term * (T_shocks + Tpred - T)] shock2;
   if (shock_term == 1) 
-    shock2 = rep_matrix(0, C, Tpred);
+    shock2 = rep_matrix(0, C, T_shocks + Tpred - T);
   
   eta[1 : C, 1 : T] = y;
   if (shock_term == 1) {
-    shock2[1 : C, 1 : T] = shock;
+    shock2[1 : C, 1 : T_shocks] = shock;
   }
   
   if (generate_shock_free == 1) {
-    eta_shockfree[1 : C, 1 : T] = y - shock;
+    if (shock_diff_mode == 0) {
+      eta_shockfree[ : , 1] = rep_vector(0, C);
+      eta_shockfree[ : , 2 : T] = y[ : , 2 : T] - shock;
+    } else {
+      eta_shockfree[ : , 1 : T] = y - shock;
+    }
   }
   
   matrix[C, num_grid] transition_function_pred;
@@ -209,8 +220,13 @@ generated quantities {
     for (c in 1 : C) {
       eta[c, t] = eta[c, t - 1] + transition[c]
                   + error_rng(eta[c : c, t - 1], epsilon_params, 1);
-      if (shock_term == 1) 
-        eta[c, t] += shock2[c, t] - shock2[c, t - 1];
+      if (shock_term == 1) {
+        if (shock_diff_mode == 1) {
+          eta[c, t] += shock2[c, t] - shock2[c, t - 1];
+        } else {
+          eta[c, t] += shock2[c, t - 1];
+        }
+      }
     }
   }
   

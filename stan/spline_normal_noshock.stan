@@ -78,7 +78,6 @@ transformed data {
       break;
     }
   }
-  print(intermediate_grid_index);
   
   int num_basis = num_knots + spline_degree - 1;
   vector[2 * spline_degree + num_knots] ext_knots;

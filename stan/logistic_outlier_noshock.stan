@@ -62,7 +62,6 @@ transformed data {
       break;
     }
   }
-  print(intermediate_grid_index);
   
   int n_below_threshold = 0;
   for (i in 1 : (C * (T - 1))) {

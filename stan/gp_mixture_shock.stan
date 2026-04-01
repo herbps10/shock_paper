@@ -101,7 +101,6 @@ transformed data {
       break;
     }
   }
-  print(intermediate_grid_index);
   
   matrix[C * (T - 1), M] PHI;
   matrix[num_grid, M] PHI_grid;

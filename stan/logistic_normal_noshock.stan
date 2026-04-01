@@ -63,7 +63,6 @@ transformed data {
       break;
     }
   }
-  print(intermediate_grid_index);
 }
 parameters {
   real<lower=0> epsilon_sigma;

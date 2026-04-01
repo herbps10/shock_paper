@@ -131,9 +131,7 @@ fits <- expand_grid(
         include_prior
       ) {
         lifeplus(
-          datM |>
-            filter(name %in% c("Republic of Korea")) |>
-            mutate(e0 = ifelse(year == 2023, 15, e0)),
+          datM |> filter(name %in% countries),
           y = "e0",
           year = "year",
           area = "name",

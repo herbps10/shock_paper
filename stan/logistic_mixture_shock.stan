@@ -98,7 +98,6 @@ transformed data {
       break;
     }
   }
-  print(intermediate_grid_index);
   
   shock_term = 1;
   generate_shock_free = 1;
